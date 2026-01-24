@@ -1,0 +1,43 @@
+{
+  "name": "survey-issue-tracker-api",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "imports": {
+    "@/*": "./src/*"
+  },
+  "scripts": {
+    "dev": "bun run src/main.ts",
+    "build": "tsc",
+    "start": "bun run src/main.ts",
+    "db:generate": "prisma generate --schema=./src/core/prisma/schema.prisma",
+    "db:push": "prisma db push --schema=./src/core/prisma/schema.prisma",
+    "db:pull": "prisma db pull --schema=./src/core/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=./src/core/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=./src/core/prisma/schema.prisma --name",
+    "db:seed": "bun run src/core/prisma/seed/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.12.0",
+    "@hono/swagger-ui": "^0.5.3",
+    "@hono/zod-openapi": "0.18.1",
+    "@prisma/adapter-pg": "^7.3.0",
+    "@prisma/client": "^7.3.0",
+    "bcryptjs": "^2.4.3",
+    "pg": "^8.13.1",
+    "hono": "^4.6.14",
+    "jsonwebtoken": "^9.0.2",
+    "winston": "^3.17.0",
+    "zod": "3.22.4",
+    "zod-openapi": "^5.4.6"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "prisma": "^7.3.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
