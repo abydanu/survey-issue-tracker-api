@@ -14,6 +14,7 @@ async function main() {
         create: {
             username: "admin",
             password: adminPass,
+            name: "Administrator",
             role: Role.ADMIN
         }
     })
@@ -24,6 +25,7 @@ async function main() {
         create: {
             username: "user",
             password: userPass,
+            name: "User 1",
             role: Role.USER
         }
     })

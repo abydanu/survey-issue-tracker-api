@@ -2,6 +2,7 @@ export interface User {
   id: string;
   username: string;
   password: string;
+  name: string;
   role: 'ADMIN' | 'USER';
   createdAt: Date;
   updatedAt: Date;
@@ -19,6 +20,7 @@ export interface Session {
 export interface UserResponse {
   id: string;
   username: string;
+  name: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,4 +38,5 @@ export interface AuthResponse {
 export interface TokenPayload {
   userId: string;
   username: string;
+  role: 'ADMIN' | 'USER';
 }

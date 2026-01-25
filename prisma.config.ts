@@ -4,7 +4,7 @@ import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
 export default defineConfig({
-  schema: "./src/core/prisma/Schema.prisma",
+  schema: "./src/core/prisma/schema.prisma",
   migrations: {
     path: "./src/core/prisma/migrations",
   },

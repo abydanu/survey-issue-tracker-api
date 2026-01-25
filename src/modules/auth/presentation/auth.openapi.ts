@@ -15,6 +15,7 @@ export const LoginRequestSchema = z.object({
 export const UserResponseSchema = z.object({
   id: z.string().openapi({ example: '123e4567-e89b-12d3-a456-426614174000' }),
   username: z.string().openapi({ example: 'admin' }),
+  name: z.string().openapi({ example: 'John Doe' }),
   createdAt: z.string().openapi({ example: '2024-01-01T00:00:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2024-01-01T00:00:00.000Z' }),
 });
@@ -120,6 +121,7 @@ export const meRoute = createRoute({
             data: z.object({
               userId: z.string(),
               username: z.string(),
+              role: z.enum(['ADMIN', 'USER']),
             }),
           }),
         },
