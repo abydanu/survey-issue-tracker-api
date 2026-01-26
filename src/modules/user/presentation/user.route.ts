@@ -10,12 +10,16 @@ import {
 import { authMiddleware, adminMiddleware } from '../../../shared/middlewares/auth.middleware';
 import { AuthService } from '../../auth/application/auth.service';
 import { AuthPrismaRepository } from '../../auth/infrastructure/auth.prisma.repository';
+import { createZodErrorHook } from '../../../shared/utils/zod';
 
 const authRepo = new AuthPrismaRepository();
 const authService = new AuthService(authRepo);
 
 export const createUserRoutes = (controller: UserController) => {
-  const app = new OpenAPIHono();
+  const zodErrorHook = createZodErrorHook();
+  const app = new OpenAPIHono({
+    defaultHook: zodErrorHook
+  });
 
   app.use('*', authMiddleware(authService));
   app.use('*', adminMiddleware());

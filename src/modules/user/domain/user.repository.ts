@@ -1,7 +1,12 @@
 import type { User, CreateUserDto, UpdateUserDto } from './user.entity';
+import type { UserQuery } from './user.query';
 
 export interface IUserRepository {
-  findAll(): Promise<User[]>;
+  findAll(query: UserQuery): Promise<{
+    data: User[];
+    total: number;
+  }>;
+
   findById(id: string): Promise<User | null>;
   findByUsername(username: string): Promise<User | null>;
   create(data: CreateUserDto): Promise<User>;

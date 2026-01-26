@@ -7,7 +7,7 @@
     "@/*": "./src/*"
   },
   "scripts": {
-    "dev": "bun run src/main.ts",
+    "dev": "bun run --hot src/main.ts",
     "build": "tsc",
     "start": "bun run src/main.ts",
     "db:generate": "prisma generate --schema=./src/core/prisma/schema.prisma",
@@ -18,15 +18,17 @@
     "db:seed": "bun run src/core/prisma/seed/index.ts"
   },
   "dependencies": {
+    "@faker-js/faker": "^10.2.0",
     "@hono/node-server": "^1.12.0",
     "@hono/swagger-ui": "^0.5.3",
     "@hono/zod-openapi": "0.18.1",
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "bcryptjs": "^2.4.3",
-    "pg": "^8.13.1",
+    "googleapis": "^170.1.0",
     "hono": "^4.6.14",
     "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
     "winston": "^3.17.0",
     "zod": "3.22.4",
     "zod-openapi": "^5.4.6"

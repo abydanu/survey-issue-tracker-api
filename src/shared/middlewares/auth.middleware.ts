@@ -1,6 +1,6 @@
 import type { Context, Next } from 'hono';
 import { AuthService } from '../../modules/auth/application/auth.service';
-import ApiResponseHelper from '../response/api-response';
+import ApiResponseHelper from '../utils/response';
 import logger from '../../infrastructure/logging/logger';
 import type { TokenPayload } from '../../modules/auth/domain/auth.entity';
 

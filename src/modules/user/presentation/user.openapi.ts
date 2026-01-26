@@ -1,4 +1,5 @@
-import { createRoute, z } from '@hono/zod-openapi';
+import { z } from '../../../shared/utils/zod';
+import { createRoute } from '@hono/zod-openapi';
 
 export const UserResponseSchema = z.object({
   id: z.string().openapi({ example: 'cmktbcxhz00010yggdaqo685v' }),
@@ -14,9 +15,9 @@ export const CreateUserRequestSchema = z.object({
     example: 'johndoe',
     description: 'Username minimal 3 karakter, maksimal 50 karakter'
   }),
-  password: z.string().min(6).openapi({
+  password: z.string().min(3).openapi({
     example: 'password123',
-    description: 'Password minimal 6 karakter'
+    description: 'Password minimal 3 karakter'
   }),
   name: z.string().min(1).max(100).openapi({
     example: 'John Doe',
@@ -53,6 +54,18 @@ export const ApiSuccessResponseSchema = z.object({
   data: z.any().optional(),
 });
 
+export const PaginationMetaSchema = z.object({
+  page: z.number().openapi({ example: 1, description: 'Halaman saat ini' }),
+  limit: z.number().openapi({ example: 10, description: 'Jumlah data per halaman' }),
+});
+
+export const GetUsersResponseSchema = z.object({
+  success: z.boolean().openapi({ example: true }),
+  message: z.string().openapi({ example: 'Daftar user berhasil diambil' }),
+  meta: PaginationMetaSchema,
+  data: z.array(UserResponseSchema),
+});
+
 export const ApiErrorResponseSchema = z.object({
   success: z.boolean().openapi({ example: false }),
   message: z.string().openapi({ example: 'Error message' }),
@@ -64,16 +77,42 @@ export const getUsersRoute = createRoute({
   path: '/',
   tags: ['Users'],
   summary: 'Get all users',
-  description: 'Mendapatkan daftar semua user',
+  description: 'Mendapatkan daftar semua user dengan pagination dan search',
   security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      page: z.string().optional().openapi({
+        param: {
+          name: 'page',
+          in: 'query',
+        },
+        example: '1',
+        description: 'Nomor halaman (default: 1)',
+      }),
+      limit: z.string().optional().openapi({
+        param: {
+          name: 'limit',
+          in: 'query',
+        },
+        example: '10',
+        description: 'Jumlah data per halaman (default: 10)',
+      }),
+      search: z.string().optional().openapi({
+        param: {
+          name: 'search',
+          in: 'query',
+        },
+        example: 'john',
+        description: 'Kata kunci untuk mencari user berdasarkan username atau name',
+      }),
+    }),
+  },
   responses: {
     200: {
       description: 'Daftar user berhasil diambil',
       content: {
         'application/json': {
-          schema: ApiSuccessResponseSchema.extend({
-            data: z.array(UserResponseSchema),
-          }),
+          schema: GetUsersResponseSchema,
         },
       },
     },

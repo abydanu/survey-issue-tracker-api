@@ -1,5 +1,4 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import type { bearerAuth } from 'hono/bearer-auth';
 
 export const LoginRequestSchema = z.object({
   username: z.string().min(3).max(50).openapi({

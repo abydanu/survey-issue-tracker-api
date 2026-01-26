@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { UserService } from '../application/user.service';
-import ApiResponseHelper from '../../../shared/response/api-response';
+import ApiResponseHelper from '../../../shared/utils/response';
 import logger from '../../../infrastructure/logging/logger';
 import type { CreateUserDto, UpdateUserDto } from '../domain/user.entity';
 
@@ -9,8 +9,27 @@ export class UserController {
 
   getAllUsers = async (c: Context) => {
     try {
-      const users = await this.userService.getAllUsers();
-      return ApiResponseHelper.success(c, users, 'Daftar user berhasil diambil');
+      const pageParam = c.req.query("page");
+      const limitParam = c.req.query("limit");
+      const searchParam = c.req.query("search");
+      
+      const page = Number(pageParam)
+      const limit = Number(limitParam)
+      
+      const query = {
+        search: searchParam,
+        page,
+        limit
+      }
+
+      const result = await this.userService.getUsers(query);
+      
+      return c.json({
+        success: true,
+        message: 'Daftar user berhasil diambil',
+        meta: result.meta,
+        data: result.data
+      });
     } catch (error: any) {
       logger.error('Get all users error:', error);
       return ApiResponseHelper.error(c, error.message || 'Gagal mengambil daftar user');

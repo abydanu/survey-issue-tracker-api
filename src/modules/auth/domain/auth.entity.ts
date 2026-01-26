@@ -21,6 +21,7 @@ export interface UserResponse {
   id: string;
   username: string;
   name: string;
+  role: 'ADMIN' | 'USER';
   createdAt: Date;
   updatedAt: Date;
 }

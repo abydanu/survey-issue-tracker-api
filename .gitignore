@@ -27,6 +27,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
+# google service account
+google-service-account.json
+
 # IntelliJ based IDEs
 .idea
 

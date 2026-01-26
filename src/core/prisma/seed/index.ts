@@ -1,3 +1,4 @@
+import { faker } from "@faker-js/faker";
 import { Role } from "../../../generated/prisma";
 import prisma from "../../../infrastructure/database/prisma";
 import bcrypt from 'bcryptjs';
@@ -5,33 +6,31 @@ import bcrypt from 'bcryptjs';
 async function main() {
     console.log("Seeding Database");
 
-    const adminPass = await bcrypt.hash("admin", 10)
-    const userPass = await bcrypt.hash("user", 10)
+    const defaultPassword = await bcrypt.hash("password", 10)
+    const TOTAL_USER = 50;
 
-    const admin = await prisma.user.upsert({
-        where: { username: "admin" },
-        update: {},
-        create: {
-            username: "admin",
-            password: adminPass,
-            name: "Administrator",
-            role: Role.ADMIN
-        }
-    })
+    const users = Array.from({ length: TOTAL_USER }).map(() => {
+        const firstName = faker.person.firstName();
+        const lastName = faker.person.lastName();
 
-    const user = await prisma.user.upsert({
-        where: { username: "user" },
-        update: {},
-        create: {
-            username: "user",
-            password: userPass,
-            name: "User 1",
+        return {
+            name: `${firstName} ${lastName}`,
+            username: faker.internet.username({
+                firstName,
+                lastName
+            }).toLowerCase(),
+            password: defaultPassword,
             role: Role.USER
         }
     })
 
+    await prisma.user.createMany({
+        data: users,
+        skipDuplicates: true,
+    })
+
+    console.log(`✅ ${TOTAL_USER} fake users inserted`);
     console.log("Seeding Sukses");
-    console.log({ admin, user });
 }
 
 main()

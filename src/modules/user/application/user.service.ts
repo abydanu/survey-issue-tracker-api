@@ -6,14 +6,27 @@ import type {
 } from '../domain/user.entity';
 import type { IUserRepository } from '../domain/user.repository';
 import logger from '../../../infrastructure/logging/logger';
+import type { UserQuery } from '../domain/user.query';
 
 export class UserService {
   constructor(private userRepo: IUserRepository) {}
 
-  async getAllUsers(): Promise<UserResponse[]> {
-    const users = await this.userRepo.findAll();
-    return users.map(user => this.toUserResponse(user));
+  async getUsers(query: UserQuery) {
+    const { data, total } = await this.userRepo.findAll(query);
+
+    const page = (query.page);
+    const limit = (query.limit);
+
+    return {
+      data: data.map(u => this.toUserResponse(u)),
+      meta: {
+        page,
+        limit,
+        total
+      },
+    };
   }
+  
 
   async getUserById(id: string): Promise<UserResponse> {
     const user = await this.userRepo.findById(id);

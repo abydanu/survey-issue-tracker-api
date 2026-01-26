@@ -12,11 +12,11 @@ export const openApiConfig = {
   servers: [
     {
       url: 'http://localhost:5000',
-      description: 'Development server',
+      description: 'Local server',
     },
     {
-      url: 'https://api.sit.com',
-      description: 'Production server',
+      url: 'https://suited-enormously-donkey.ngrok-free.app',
+      description: 'Development server',
     },
   ],
   tags: [

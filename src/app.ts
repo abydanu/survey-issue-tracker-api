@@ -5,11 +5,17 @@ import { logger as honoLogger } from 'hono/logger';
 import type { Context } from 'hono';
 import { setupRoutes } from './routes';
 import { openApiConfig } from './openapi';
-import ApiResponseHelper from './shared/response/api-response';
+import ApiResponseHelper from './shared/utils/response';
 import logger from './infrastructure/logging/logger';
+import { ZodError } from 'zod';
+import { formatZodError, createZodErrorHook } from './shared/utils/zod';
 
 export const createApp = () => {
-  const app = new OpenAPIHono()
+  const zodErrorHook = createZodErrorHook();
+  
+  const app = new OpenAPIHono({
+    defaultHook: zodErrorHook
+  })
 
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
@@ -18,11 +24,16 @@ export const createApp = () => {
     description: 'Masukkan token',
   });
 
+  app.use('*', async(c, next) => {
+    c.req.raw.headers.set('ngrok-skip-browser-warning', 'true');
+    await next();
+  });
+
   app.use('*', cors({
-    origin: '*',
+    origin: ['http://localhost:3000', 'http://localhost:5000'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
-    exposeHeaders: ['Content-Type'],
+    allowHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
+    exposeHeaders: ['Content-Type', 'ngrok-skip-browser-warning'],
     credentials: true,
   }));
   app.use('*', honoLogger());
@@ -53,6 +64,13 @@ export const createApp = () => {
 
   app.onError((err: Error, c: Context) => {
     logger.error('Unhandled error:', err);
+    if (err instanceof ZodError) {
+      return c.json({
+        success: "false",
+        message: "Error Validation",
+        errors: formatZodError(err),
+      }, 400)
+    }
     return ApiResponseHelper.serverError(c, 'Terjadi kesalahan server');
   });
 

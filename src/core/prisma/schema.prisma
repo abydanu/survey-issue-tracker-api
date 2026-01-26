@@ -40,3 +40,168 @@ model Session {
 
   @@map("sessions")
 }
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  status    Status
+  message   String?
+  sheetName String?  @map("sheet_name")
+  syncedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sync_logs")
+}
+
+enum Status {
+  SUCCESS
+  FAILED
+}
+
+model DashboardSummary {
+  id              String         @id @default(uuid())
+  no              String         @unique
+  bln             String         @map("bulan")
+  tglInput        DateTime       @map("tgl_input")
+  idKendala       String         @map("id_kendala")
+  jenisOrder      String         @map("jenis_order")
+  datel           String
+  sto             String
+  namaPelanggan   String?        @map("nama_pelanggan")
+  latitude        String?        @map("latitude")
+  longitude       String?        @map("longitude")
+  jenisKendala    JenisKendala?  @map("jenis_kendala")
+  pltTemuan       PlanTematik?   @map("plan_tematik")
+  rabHld          Decimal?       @map("rab_hld") @db.Decimal(15, 0)
+  ihld            Int?
+  statusUsulan    StatusUsulan?  @map("status_usulan")
+  statusIhld      String?        @map("status_ihld")
+  idEprop         String?        @map("id_eprop")
+  statusInstalasi ProjectStatus? @map("status_instalasi")
+  keterangan      ProjectIssue?
+  newSc           String?        @map("status_sc")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  detail DashboardDetail? @relation(fields: [no], references: [no])
+
+  @@map("dashboard_summary")
+}
+
+enum JenisKendala {
+  ODP_FULL
+  JARAK_PT1_250
+  BLANK_FO
+  JARAK_JAUH_500
+  BLANK_TIANG
+  NEED_MATAM_3PCS
+}
+
+enum PlanTematik {
+  PT1
+  PT2S
+  PT2NS
+  PT3
+  PT4
+  TKAP
+}
+
+enum StatusUsulan {
+  REVIEW_SDI
+  BELUM_INPUT
+  REVIEW_OPTIMA
+  REVIEW_ED
+  CEK_SDI_REGIONAL
+  APPROVED
+  DROP_LOP
+  KONFIRMASI_ULANG
+  NOT_APPROVED
+  PENDING
+  CANCEL
+  OGP_IHLD
+  WAITING_CARING
+}
+
+enum ProjectStatus {
+  REVIEW
+  SURVEY
+  INSTALASI
+  DONE_INSTALASI
+  GO_LIVE
+  CANCEL
+  PENDING
+  KENDALA
+  WAITING_BUDGET
+  DROP
+  WAITING_PROJECT_JPP
+  WAITING_CB
+}
+
+enum ProjectIssue {
+  PELANGGAN_BATAL
+  PT1_ONLY
+  PERIJINAN
+  AKI_TIDAK_LAYAK
+  REDESIGN
+  INDIKASI_RESELLER
+  FEEDER_HABIS
+  KENDALA_IZIN_TANAM_TN
+  PORT_OLT_HABIS
+  MATTAM_TIANG
+  DISTRIBUSI_HABIS
+  MENUNGGU_M_OLT
+  MENUNGGU_RELOKASI_TIANG_PLN
+  CORE_DISTRIBUSI_CACAT
+  MENUNGGU_CO_FEEDER
+  PORT_EA_HABIS
+  INVALID_LOCATION
+  HOLD_BY_BGES
+  WAITING_REVIT_ODP
+  HOLD_BY_PED
+}
+
+model DashboardDetail {
+  id              String        @id @default(uuid())
+  no              String        @unique
+  updateJt        String?       @map("update_jt")
+  c2r             Decimal       @db.Decimal(10, 2)
+  nomorNc         String        @map("nomor_ncx")
+  datel           String
+  sto             String
+  namaPelanggan   String?       @map("nama_pelanggan")
+  latitude        String?
+  longitude       String?
+  alamat          String?
+  jenisLayanan    String?       @map("jenis_layanan")
+  nilaiKontrak    BigInt        @map("nilai_kontrak")
+  ihldLop         Int           @map("ihd_loop_id")
+  planTematik     PlanTematik   @map("plan_tematik")
+  rabHld          BigInt        @map("rab_hld")
+  rabSurvey       BigInt        @map("rab_survey")
+  noNde           String        @map("nomor_nde")
+  statusUsulan    StatusUsulan  @map("status_usulan")
+  statusInstalasi ProjectStatus @map("status_instalasi")
+  progresJt       String?       @map("progres_jt")
+  namaOdp         String?       @map("nama_odp")
+  jarakOdp        String?       @map("jarak_odp")
+  keterangan      String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  summary DashboardSummary?
+
+  @@map("dashboard_detail")
+}
+
+enum StatusJt {
+  APPROVE
+  NOT_APPROVE
+  DROP_BY_WITEL
+  DROP_BY_AM
+  REVENUE_KURANG
+  AKI_TIDAK_LAYAK
+  NJKI_BELUM_LENGKAP
+  AANWIJZING
+  TUNGGU_JPP
+  CANCEL_PELANGGAN
+  INPUT_PAKET_LAIN
+}

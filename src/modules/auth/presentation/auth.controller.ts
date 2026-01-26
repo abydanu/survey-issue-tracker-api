@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { AuthService } from '../application/auth.service';
-import ApiResponseHelper from '../../../shared/response/api-response';
+import ApiResponseHelper from '../../../shared/utils/response';
 import logger from '../../../infrastructure/logging/logger';
 import type { LoginCredentials } from '../domain/auth.entity';
 
