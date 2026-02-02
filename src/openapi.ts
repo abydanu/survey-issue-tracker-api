@@ -18,11 +18,31 @@ export const openApiConfig = {
       url: 'https://suited-enormously-donkey.ngrok-free.app',
       description: 'Development server',
     },
+    {
+      url: 'https://survey-issue-tracker-api.vercel.app',
+      description: 'Production server',
+    },
   ],
   tags: [
     {
       name: 'Authentication',
       description: 'Endpoint untuk autentikasi user',
     },
+    {
+      name: 'Users',
+      description: 'Endpoint untuk manajemen user',
+    },
+    {
+      name: 'Survey',
+      description: 'Endpoint untuk data survey',
+    },
+    {
+      name: 'Sync',
+      description: 'Endpoint untuk sinkronisasi data dengan Google Sheets',
+    },
+    {
+      name: 'Analytics',
+      description: 'Endpoint untuk analytics data',
+    }
   ],
 };

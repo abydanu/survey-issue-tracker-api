@@ -14,13 +14,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  password  String
-  name      String
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  username    String    @unique
+  password    String
+  name        String
+  role        Role      @default(USER)
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@map("users")
 }
@@ -57,34 +58,120 @@ enum Status {
   FAILED
 }
 
-model DashboardSummary {
-  id              String         @id @default(uuid())
-  no              String         @unique
-  bln             String         @map("bulan")
-  tglInput        DateTime       @map("tgl_input")
-  idKendala       String         @map("id_kendala")
-  jenisOrder      String         @map("jenis_order")
-  datel           String
-  sto             String
-  namaPelanggan   String?        @map("nama_pelanggan")
-  latitude        String?        @map("latitude")
-  longitude       String?        @map("longitude")
-  jenisKendala    JenisKendala?  @map("jenis_kendala")
-  pltTemuan       PlanTematik?   @map("plan_tematik")
-  rabHld          Decimal?       @map("rab_hld") @db.Decimal(15, 0)
-  ihld            Int?
-  statusUsulan    StatusUsulan?  @map("status_usulan")
-  statusIhld      String?        @map("status_ihld")
-  idEprop         String?        @map("id_eprop")
-  statusInstalasi ProjectStatus? @map("status_instalasi")
-  keterangan      ProjectIssue?
-  newSc           String?        @map("status_sc")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+enum SyncStatus {
+  SYNCED      
+  PENDING     
+  CONFLICT    
+  ERROR       
+}
 
-  detail DashboardDetail? @relation(fields: [no], references: [no])
+model NewBgesB2BOlo {
+  id String @id @default(cuid())
+  umur              Int?
+  bln               String?
+  tglInputUsulan    DateTime? @map("tgl_input_usulan") // Tanggal input (untuk chart)
+  idKendala         String    @unique @map("id_kendala") // ID KENDALA (relasi dengan Sheet 1)
+  jenisOrder        String?   @map("jenis_order") // NEW/ADD
+  
+  // ===== INFORMASI PELANGGAN =====
+  datel             String?
+  sto               String?
+  namaPelanggan     String?   @map("nama_pelanggan")
+  latitude          String?
+  longitude         String?
+  
+  // ===== KENDALA & PLAN =====
+  jenisKendala      JenisKendala?   @map("jenis_kendala")
+  planTematik       PlanTematik?   @map("plan_tematik")
+  
+  // ===== RAB & IHLD =====
+  rabHld            Decimal?  @map("rab_hld") @db.Decimal(15, 0)
+  ihldValue         BigInt?   @map("ihld_value") @db.BigInt
+  
+  // ===== STATUS =====
+  statusUsulan      StatusUsulan?   @map("status_usulan")
+  statusIhld        String?   @map("status_ihld")
+  idEprop           String?   @map("id_eprop")
+  statusInstalasi   StatusInstalasi?   @map("status_instalasi")
+  keterangan        Keterangan?   @map("keterangan")
+  newSc             String?   @map("new_sc")
+  
+  namaOdp           String?   @map("nama_odp")
+  tglGolive         DateTime? @map("tgl_golive")
+  
+  // ===== AVAILABILITY =====
+  avai              Int?
+  used              Int?
+  isTotal           Int?      @map("is_total")
+  occPercentage     Decimal?  @map("occ_percentage") @db.Decimal(5, 2)
+  
+  ndeUsulan         NdeUsulanB2B? // One-to-one relation
+  
+  syncStatus        SyncStatus @default(SYNCED) @map("sync_status")
+  lastSyncAt        DateTime?  @map("last_sync_at")
+  sheetRowNumber    Int?       @map("sheet_row_number")
+  
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  @@map("dashboard_summary")
+  @@index([idKendala])
+  @@index([bln])
+  @@index([tglInputUsulan])
+  @@index([datel])
+  @@index([sto])
+  @@index([statusUsulan])
+  @@index([statusInstalasi])
+  @@map("new_bges_b2b_olo")
+}
+
+model NdeUsulanB2B {
+  id String @id @default(cuid())
+
+  // ===== PRIMARY KEY & RELASI =====
+  no                String    @unique // NO (primary identifier di sheet 1)
+  nomorNcx          String    @unique @map("nomor_ncx") // Nomor NCX/Starclick (FK ke Sheet 2)
+  
+  // ===== KOLOM YANG BISA DIEDIT (NO FORMULA) =====
+  statusJt          StatusJt?   @map("status_jt") // ✏️ Editable
+  c2r               Decimal?  @db.Decimal(10, 2) // ✏️ Editable
+  alamatInstalasi   String?   @map("alamat_instalasi") @db.Text // ✏️ Editable
+  jenisLayanan      String?   @map("jenis_layanan") // ✏️ Editable
+  nilaiKontrak      Decimal?  @map("nilai_kontrak") @db.Decimal(15, 0) // ✏️ Editable
+  rabSurvey         Decimal?  @map("rab_survey") @db.Decimal(15, 0) // ✏️ Editable
+  nomorNde          String?   @map("nomor_nde") // ✏️ Editable
+  progressJt        String?   @map("progress_jt") // ✏️ Editable
+  namaOdp           String?   @map("nama_odp") // ✏️ Editable
+  jarakOdp          Decimal?  @map("jarak_odp") @db.Decimal(10, 2) // ✏️ Editable
+  keterangan        String?   @db.Text // ✏️ Editable
+  
+  // ===== KOLOM DARI FORMULA (READ-ONLY, ambil dari Sheet 2) =====
+  // Kolom ini di-sync dari hasil formula di Sheet 1
+  datel             String?   // 🔗 Dari Sheet 2 (via formula)
+  sto               String?   // 🔗 Dari Sheet 2 (via formula)
+  namaPelanggan     String?   @map("nama_pelanggan") // 🔗 Dari Sheet 2
+  latitude          String?   // 🔗 Dari Sheet 2
+  longitude         String?   // 🔗 Dari Sheet 2
+  ihldLopId         Int?      @map("ihld_lop_id") // 🔗 Dari Sheet 2
+  planTematik       String?   @map("plan_tematik") // 🔗 Dari Sheet 2
+  rabHld            Decimal?  @map("rab_hld") @db.Decimal(15, 0) // 🔗 Dari Sheet 2
+  statusUsulan      String?   @map("status_usulan") // 🔗 Dari Sheet 2
+  statusInstalasi   StatusInstalasi?   @map("status_instalasi") // 🔗 Dari Sheet 2
+  
+  masterData        NewBgesB2BOlo? @relation(fields: [nomorNcx], references: [idKendala])
+  
+  syncStatus        SyncStatus @default(SYNCED) @map("sync_status")
+  lastSyncAt        DateTime?  @map("last_sync_at")
+  sheetRowNumber    Int?       @map("sheet_row_number")
+  
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  @@index([no])
+  @@index([nomorNcx])
+  @@index([datel])
+  @@index([sto])
+  @@index([syncStatus])
+  @@map("nde_usulan_b2b")
 }
 
 enum JenisKendala {
@@ -121,7 +208,7 @@ enum StatusUsulan {
   WAITING_CARING
 }
 
-enum ProjectStatus {
+enum StatusInstalasi {
   REVIEW
   SURVEY
   INSTALASI
@@ -136,7 +223,7 @@ enum ProjectStatus {
   WAITING_CB
 }
 
-enum ProjectIssue {
+enum Keterangan {
   PELANGGAN_BATAL
   PT1_ONLY
   PERIJINAN
@@ -159,44 +246,11 @@ enum ProjectIssue {
   HOLD_BY_PED
 }
 
-model DashboardDetail {
-  id              String        @id @default(uuid())
-  no              String        @unique
-  updateJt        String?       @map("update_jt")
-  c2r             Decimal       @db.Decimal(10, 2)
-  nomorNc         String        @map("nomor_ncx")
-  datel           String
-  sto             String
-  namaPelanggan   String?       @map("nama_pelanggan")
-  latitude        String?
-  longitude       String?
-  alamat          String?
-  jenisLayanan    String?       @map("jenis_layanan")
-  nilaiKontrak    BigInt        @map("nilai_kontrak")
-  ihldLop         Int           @map("ihd_loop_id")
-  planTematik     PlanTematik   @map("plan_tematik")
-  rabHld          BigInt        @map("rab_hld")
-  rabSurvey       BigInt        @map("rab_survey")
-  noNde           String        @map("nomor_nde")
-  statusUsulan    StatusUsulan  @map("status_usulan")
-  statusInstalasi ProjectStatus @map("status_instalasi")
-  progresJt       String?       @map("progres_jt")
-  namaOdp         String?       @map("nama_odp")
-  jarakOdp        String?       @map("jarak_odp")
-  keterangan      String?
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
-
-  summary DashboardSummary?
-
-  @@map("dashboard_detail")
-}
-
 enum StatusJt {
   APPROVE
   NOT_APPROVE
-  DROP_BY_WITEL
   DROP_BY_AM
+  DROP_BY_WITEL
   REVENUE_KURANG
   AKI_TIDAK_LAYAK
   NJKI_BELUM_LENGKAP

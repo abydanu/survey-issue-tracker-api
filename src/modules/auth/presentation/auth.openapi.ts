@@ -3,11 +3,11 @@ import { createRoute, z } from '@hono/zod-openapi';
 export const LoginRequestSchema = z.object({
   username: z.string().min(3).max(50).openapi({
     example: 'admin',
-    description: 'Username untuk login'
+    description: 'Username for login'
   }),
   password: z.string().min(3).openapi({
     example: 'admin123',
-    description: 'Password minimal 3 karakter'
+    description: 'Password must be at least 3 characters'
   }),
 });
 
@@ -23,7 +23,7 @@ export const AuthResponseSchema = z.object({
   user: UserResponseSchema,
   token: z.string().openapi({ 
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    description: 'JWT token untuk authentication'
+    description: 'JWT token for authentication'
   }),
 });
 
@@ -35,7 +35,7 @@ export const ApiSuccessResponseSchema = z.object({
 
 export const ApiErrorResponseSchema = z.object({
   success: z.boolean().openapi({ example: false }),
-  message: z.string().openapi({ example: 'Error message' }),
+  message: z.string().openapi({ example: 'Failed to login' }),
   errors: z.any().optional(),
 });
 

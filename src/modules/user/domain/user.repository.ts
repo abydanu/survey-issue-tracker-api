@@ -1,5 +1,5 @@
-import type { User, CreateUserDto, UpdateUserDto } from './user.entity';
-import type { UserQuery } from './user.query';
+import type { User, CreateUserDto, UpdateUserDto } from './user.entity.js';
+import type { UserQuery } from './user.query.js';
 
 export interface IUserRepository {
   findAll(query: UserQuery): Promise<{

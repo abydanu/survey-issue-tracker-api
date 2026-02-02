@@ -4,6 +4,7 @@ export interface User {
   password: string;
   name: string;
   role: 'ADMIN' | 'USER';
+  lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +23,7 @@ export interface UserResponse {
   username: string;
   name: string;
   role: 'ADMIN' | 'USER';
+  lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,5 +41,6 @@ export interface AuthResponse {
 export interface TokenPayload {
   userId: string;
   username: string;
+  name?: string;
   role: 'ADMIN' | 'USER';
 }

@@ -1,0 +1,5 @@
+{
+  "framework": "hono",
+  "buildCommand": "bun run db:generate",
+  "installCommand": "bun install"
+}

@@ -1,6 +1,6 @@
 import { faker } from "@faker-js/faker";
-import { Role } from "../../../generated/prisma";
-import prisma from "../../../infrastructure/database/prisma";
+import { Role } from "../../../generated/prisma/index.js";
+import prisma from "../../../infrastructure/database/prisma.js";
 import bcrypt from 'bcryptjs';
 
 async function main() {
@@ -29,6 +29,31 @@ async function main() {
         skipDuplicates: true,
     })
 
+    const adminPassword = await bcrypt.hash("admin", 10)
+    const userPassword = await bcrypt.hash("user", 10)
+
+    await prisma.user.upsert({
+        where: { username: "admin" },
+        update: {},
+        create: {
+            username: "admin",
+            name: "Alfonsus Siahaan",
+            password: adminPassword,
+            role: Role.ADMIN
+        },
+    })
+
+    await prisma.user.upsert({
+        where: { username: "user" },
+        update: {},
+        create: {
+            username: "user",
+            name: "Adi Kurniawan",
+            password: userPassword,
+            role: Role.USER
+        },
+    })
+
     console.log(`✅ ${TOTAL_USER} fake users inserted`);
     console.log("Seeding Sukses");
 }
@@ -37,7 +62,7 @@ main()
     .catch((e) => {
         console.log("Error", e);
         process.exit(1)
-    })
+    })  
     .finally(async () => {
         await prisma.$disconnect();
     });

@@ -1,8 +1,8 @@
 import type { Context } from 'hono';
-import { AuthService } from '../application/auth.service';
-import ApiResponseHelper from '../../../shared/utils/response';
-import logger from '../../../infrastructure/logging/logger';
-import type { LoginCredentials } from '../domain/auth.entity';
+import { AuthService } from '../application/auth.service.js';
+import ApiResponseHelper from '../../../shared/utils/response.js';
+import logger from '../../../infrastructure/logging/logger.js';
+import type { LoginCredentials } from '../domain/auth.entity.js';
 
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -11,10 +11,10 @@ export class AuthController {
     try {
       const body = await c.req.json<LoginCredentials>();
       const result = await this.authService.login(body);
-      return ApiResponseHelper.success(c, result, 'Login berhasil');
+      return ApiResponseHelper.success(c, result, 'Login successful');
     } catch (error: any) {
       logger.error('Login error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Login gagal');
+      return ApiResponseHelper.error(c, error.message || 'Login failed');
     }
   };
 
@@ -23,17 +23,17 @@ export class AuthController {
       const authHeader = c.req.header('Authorization');
       
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ApiResponseHelper.unauthorized(c, 'Token tidak ditemukan');
+        return ApiResponseHelper.unauthorized(c, 'Token not found or invalid');
       }
 
       const token = authHeader.substring(7);
       await this.authService.verifyToken(token);
       await this.authService.logout(token);
-      
-      return ApiResponseHelper.success(c, null, 'Logout berhasil');
+
+      return ApiResponseHelper.success(c, null, 'Logout successful');
     } catch (error: any) {
       logger.error('Logout error:', error);
-      return ApiResponseHelper.unauthorized(c, error.message || 'Logout gagal');
+      return ApiResponseHelper.unauthorized(c, error.message || 'Logout failed');
     }
   };
 
@@ -42,16 +42,16 @@ export class AuthController {
       const authHeader = c.req.header('Authorization');
       
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ApiResponseHelper.unauthorized(c, 'Token tidak ditemukan');
+        return ApiResponseHelper.unauthorized(c, 'Token not found or invalid');
       }
 
       const token = authHeader.substring(7);
       const user = await this.authService.verifyToken(token);
-      
-      return ApiResponseHelper.success(c, user, 'Data user berhasil diambil');
+
+      return ApiResponseHelper.success(c, user, 'User data fetched successfully');
     } catch (error: any) {
       logger.error('Get user error:', error);
-      return ApiResponseHelper.unauthorized(c, error.message || 'Token tidak valid');
+      return ApiResponseHelper.unauthorized(c, error.message || 'Invalid or expired token');
     }
   };
 }

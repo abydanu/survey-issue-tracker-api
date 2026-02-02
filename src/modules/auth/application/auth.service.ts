@@ -6,9 +6,9 @@ import type {
   UserResponse,
   TokenPayload,
   User,
-} from '../domain/auth.entity';
-import type { IAuthRepository } from '../domain/auth.repository';
-import logger from '../../../infrastructure/logging/logger';
+} from '../domain/auth.entity.js';
+import type { IAuthRepository } from '../domain/auth.repository.js';
+import logger from '../../../infrastructure/logging/logger.js';
 
 export class AuthService {
   constructor(private authRepo: IAuthRepository) {}
@@ -29,7 +29,7 @@ export class AuthService {
     }
 
     const token = jwt.sign(
-      { userId: user.id, username: user.username, role: user.role },
+      { userId: user.id, username: user.username, role: user.role, name: user.name },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
@@ -37,6 +37,7 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
     await this.authRepo.createSession(user.id, token, expiresAt);
+    await this.authRepo.updateLastLogin(user.id);
 
     logger.info(`User logged in successfully - ${username}`);
 
@@ -73,6 +74,7 @@ export class AuthService {
       username: user.username,
       name: user.name,
       role: user.role,
+      lastLoginAt: user.lastLoginAt ?? undefined,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

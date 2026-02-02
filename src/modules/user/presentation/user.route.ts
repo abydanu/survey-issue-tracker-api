@@ -1,16 +1,16 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { UserController } from './user.controller';
+import { UserController } from './user.controller.js';
 import {
   getUsersRoute,
   getUserByIdRoute,
   createUserRoute,
   updateUserRoute,
   deleteUserRoute,
-} from './user.openapi';
-import { authMiddleware, adminMiddleware } from '../../../shared/middlewares/auth.middleware';
-import { AuthService } from '../../auth/application/auth.service';
-import { AuthPrismaRepository } from '../../auth/infrastructure/auth.prisma.repository';
-import { createZodErrorHook } from '../../../shared/utils/zod';
+} from './user.openapi.js';
+import { authMiddleware, adminMiddleware } from '../../../shared/middlewares/auth.middleware.js';
+import { AuthService } from '../../auth/application/auth.service.js';
+import { AuthPrismaRepository } from '../../auth/infrastructure/auth.prisma.repository.js';
+import { createZodErrorHook } from '../../../shared/utils/zod.js';
 
 const authRepo = new AuthPrismaRepository();
 const authService = new AuthService(authRepo);

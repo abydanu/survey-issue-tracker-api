@@ -3,12 +3,12 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
 import type { Context } from 'hono';
-import { setupRoutes } from './routes';
-import { openApiConfig } from './openapi';
-import ApiResponseHelper from './shared/utils/response';
-import logger from './infrastructure/logging/logger';
+import { setupRoutes } from './routes/index.js';
+import { openApiConfig } from './openapi.js';
+import ApiResponseHelper from './shared/utils/response.js';
+import logger from './infrastructure/logging/logger.js';
 import { ZodError } from 'zod';
-import { formatZodError, createZodErrorHook } from './shared/utils/zod';
+import { formatZodError, createZodErrorHook } from './shared/utils/zod.js';
 
 export const createApp = () => {
   const zodErrorHook = createZodErrorHook();
@@ -21,7 +21,7 @@ export const createApp = () => {
     type: 'http',
     scheme: 'bearer',
     bearerFormat: 'JWT',
-    description: 'Masukkan token',
+    description: 'Enter Bearer token',
   });
 
   app.use('*', async(c, next) => {
@@ -30,7 +30,13 @@ export const createApp = () => {
   });
 
   app.use('*', cors({
-    origin: ['http://localhost:3000', 'http://localhost:5000'],
+    origin: (origin) => {
+      const allowed = ['http://localhost:3000', 'http://localhost:5000', 'https://suited-enormously-donkey.ngrok-free.app'];
+      if (!origin) return allowed[0];
+      if (allowed.includes(origin)) return origin;
+      if (origin.endsWith('.vercel.app')) return origin;
+      return allowed[0];
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
     exposeHeaders: ['Content-Type', 'ngrok-skip-browser-warning'],
@@ -56,23 +62,32 @@ export const createApp = () => {
     title: 'Survey Issue Tracking API Documentation',
     persistAuthorization: true,
     deepLinking: true,
-  }));
+  }));  
 
   app.notFound((c: Context) => {
-    return ApiResponseHelper.notFound(c, 'Endpoint tidak ditemukan');
+    return ApiResponseHelper.notFound(c, 'Endpoint not found');
   });
 
   app.onError((err: Error, c: Context) => {
-    logger.error('Unhandled error:', err);
+    logger.error('Unhandled error:', err as any);
+
+    if (err.message?.includes('Malformed JSON') || err.message?.includes('Unexpected token')) {
+      return ApiResponseHelper.error(c, 'Invalid request body. Ensure body is valid JSON.', undefined, 400);
+    }
+
     if (err instanceof ZodError) {
       return c.json({
-        success: "false",
-        message: "Error Validation",
+        success: false,
+        message: 'Validation error',
         errors: formatZodError(err),
-      }, 400)
+      }, 400);
     }
-    return ApiResponseHelper.serverError(c, 'Terjadi kesalahan server');
+
+    return ApiResponseHelper.serverError(c, 'Internal server error');
   });
 
   return app;
 };
+
+const app = createApp();
+export default app;

@@ -1,4 +1,4 @@
-import { z } from '../../../shared/utils/zod';
+import { z } from '../../../shared/utils/zod.js';
 import { createRoute } from '@hono/zod-openapi';
 
 export const UserResponseSchema = z.object({
@@ -34,9 +34,13 @@ export const UpdateUserRequestSchema = z.object({
     example: 'johndoe',
     description: 'Username minimal 3 karakter, maksimal 50 karakter'
   }),
-  password: z.string().min(6).optional().openapi({
-    example: 'newpassword123',
-    description: 'Password minimal 6 karakter'
+  oldPassword: z.string().min(3).optional().openapi({
+    example: 'old123',
+    description: 'Password minimal 3 karakter'
+  }),
+  newPassword: z.string().min(3).optional().openapi({
+    example: 'new123',
+    description: 'Password minimal 3 karakter'
   }),
   name: z.string().min(1).max(100).optional().openapi({
     example: 'John Doe Updated',
@@ -46,7 +50,15 @@ export const UpdateUserRequestSchema = z.object({
     example: 'ADMIN',
     description: 'Role user'
   }),
-});
+}).refine(
+  (data) =>
+    (!data.oldPassword && !data.newPassword) ||
+    (data.oldPassword && data.newPassword),
+  {
+    message: 'Password lama dan password baru harus diisi bersamaan',
+    path: ['oldPassword', 'newPassword'],
+  }
+);
 
 export const ApiSuccessResponseSchema = z.object({
   success: z.boolean().openapi({ example: true }),

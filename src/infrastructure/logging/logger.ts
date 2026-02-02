@@ -1,25 +1,29 @@
-import winston from 'winston';
+import pino from 'pino';
 
-const logFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.errors({ stack: true }),
-  winston.format.printf(({ timestamp, level, message, stack }) => {
-    return stack
-      ? `${timestamp} [${level.toUpperCase()}]: ${message}\n${stack}`
-      : `${timestamp} [${level.toUpperCase()}]: ${message}`;
-  })
-);
+const isProd = process.env.NODE_ENV === 'production';
 
-export const logger = winston.createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  format: logFormat,
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(winston.format.colorize(), logFormat),
-    }),
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' }),
-  ],
+const logger = pino({
+  level: isProd ? 'info' : 'debug',
+  timestamp: () => `,"timestamp":"${new Date().toISOString().replace('T', ' ').slice(0, 19)}"`,
+  formatters: {
+    level(label) {
+      return { level: label.toUpperCase() };
+    },
+  },
+  messageKey: 'message',
+  ...(isProd
+    ? {}
+    : {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'yyyy-mm-dd HH:MM:ss',
+            ignore: 'pid,hostname',
+            singleLine: false,
+          },
+        },
+      }),
 });
 
 export default logger;

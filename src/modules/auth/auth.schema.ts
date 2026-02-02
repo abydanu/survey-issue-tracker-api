@@ -1,1 +1,1 @@
-export * from './presentation/auth.openapi';
+export * from './presentation/auth.openapi.js';

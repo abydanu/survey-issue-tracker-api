@@ -4,6 +4,7 @@ export interface User {
   password: string;
   name: string;
   role: 'ADMIN' | 'USER';
+  lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -13,6 +14,7 @@ export interface UserResponse {
   username: string;
   name: string;
   role: 'ADMIN' | 'USER';
+  lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,7 +28,8 @@ export interface CreateUserDto {
 
 export interface UpdateUserDto {
   username?: string;
-  password?: string;
+  oldPassword?: string;
+  newPassword?: string;
   name?: string;
   role?: 'ADMIN' | 'USER';
 }
