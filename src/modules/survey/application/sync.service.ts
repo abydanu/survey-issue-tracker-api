@@ -7,17 +7,26 @@ import type {
   SurveyDetailSheetRow,
 } from "../domain/sync.entity.js";
 import { SyncValidationHelper } from "../../../shared/utils/sync-validation.js";
+import { EnumSyncService } from "./enum-sync.service.js";
 
 export class SyncService {
   private _googleSheets: GoogleSheetsService | null = null;
+  private _enumSyncService: EnumSyncService | null = null;
 
-  constructor(private syncRepo: ISyncRepository) {}
+  constructor(private syncRepo: ISyncRepository) { }
 
   private getGoogleSheets(): GoogleSheetsService {
     if (!this._googleSheets) {
       this._googleSheets = new GoogleSheetsService();
     }
     return this._googleSheets;
+  }
+
+  private getEnumSyncService(): EnumSyncService {
+    if (!this._enumSyncService) {
+      this._enumSyncService = new EnumSyncService(this.getGoogleSheets());
+    }
+    return this._enumSyncService;
   }
 
   async syncFromSheets(): Promise<{ success: boolean; message: string }> {
@@ -118,6 +127,81 @@ export class SyncService {
         `Gagal sinkronisasi dari Google Sheets: ${error.message}`
       );
     }
+  }
+
+  async autoSyncFromSheets(): Promise<{
+    success: boolean;
+    message: string;
+    totalRecords: number;
+    processedRecords: number;
+    syncStats: {
+      created: number;
+      updated: number;
+      skipped: number;
+      errors: number;
+    };
+    enumSync: {
+      processed: boolean;
+      newEnums: string[];
+    };
+    batchesProcessed: number;
+  }> {
+    try {
+      logger.info("Starting optimized automatic sync from Google Sheets...");
+
+
+      logger.info("Fetching data from Google Sheets...");
+      const summaryData = await this.getGoogleSheets().readSummaryData();
+      const detailData = await this.getGoogleSheets().readDetailData();
+
+      logger.info(`Fetched ${summaryData.length} summary + ${detailData.length} detail records`);
+
+      const totalRecords = summaryData.length + detailData.length;
+
+
+      logger.info("Starting optimized batch processing...");
+      const syncStats = await this.syncRepo.autoSyncFromSheets(
+        summaryData,
+        detailData
+      );
+
+
+      const successMessage = `Optimized sync: ${syncStats.created} created, ${syncStats.updated} updated, ${syncStats.skipped} skipped`;
+
+      logger.info(successMessage);
+
+      const dateTime = new Date().toLocaleString('id-ID', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
+
+      return {
+        success: true,
+        message: `Sync completed! ${syncStats.created} created, ${syncStats.updated} updated - ${dateTime}`,
+        totalRecords,
+        processedRecords: syncStats.created + syncStats.updated + syncStats.skipped,
+        syncStats,
+        enumSync: {
+          processed: false,
+          newEnums: [],
+        },
+        batchesProcessed: syncStats.batchesProcessed || 0,
+      };
+    } catch (error: any) {
+      logger.error("Error in optimized auto sync:", error);
+
+
+      throw new Error(`Sync failed: ${error.message}`);
+    }
+  }
+
+  async syncEnumsFromSheets(options: { dryRun?: boolean } = {}) {
+    const { dryRun = true } = options;
+    logger.info(
+      { dryRun },
+      "Starting enum sync from Google Sheets dropdown values"
+    );
+    return this.getEnumSyncService().syncEnums({ dryRun });
   }
 
   async syncToSheets(
@@ -226,12 +310,12 @@ export class SyncService {
     return {
       lastSync: lastSync
         ? {
-            id: lastSync.id,
-            status: lastSync.status,
-            message: lastSync.message,
-            sheetName: lastSync.sheetName,
-            syncedAt: lastSync.syncedAt,
-          }
+          id: lastSync.id,
+          status: lastSync.status,
+          message: lastSync.message,
+          sheetName: lastSync.sheetName,
+          syncedAt: lastSync.syncedAt,
+        }
         : null,
     };
   }

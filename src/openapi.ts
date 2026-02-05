@@ -43,6 +43,10 @@ export const openApiConfig = {
     {
       name: 'Analytics',
       description: 'Endpoint untuk analytics data',
+    },
+    {
+      name: 'Enums',
+      description: 'Endpoint untuk mendapatkan enum values untuk filtering',
     }
   ],
 };

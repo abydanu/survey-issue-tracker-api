@@ -8,10 +8,13 @@ import { UserController } from '../modules/user/presentation/user.controller.js'
 import { UserService } from '../modules/user/application/user.service.js';
 import { UserPrismaRepository } from '../modules/user/infrastructure/user.prisma.repository.js';
 import { createSyncRoutes } from '../modules/survey/presentation/sync.route.js';
+import { createEnumRoutes } from '../modules/survey/presentation/enum.route.js';
 import { SyncController } from '../modules/survey/presentation/sync.controller.js';
+import { EnumController } from '../modules/survey/presentation/enum.controller.js';
 import { DashboardService, ChartService, StatsService } from '../modules/survey/application/dashboard.service.js';
 import { AdminService } from '../modules/survey/application/admin.service.js';
 import { SyncService } from '../modules/survey/application/sync.service.js';
+import { EnumService } from '../modules/survey/application/enum.service.js';
 import { SyncPrismaRepository } from '../modules/survey/infrastructure/sync.prisma.repository.js';
 
 const authRepo = new AuthPrismaRepository();
@@ -30,8 +33,12 @@ const chartService = new ChartService();
 const statsService = new StatsService();
 const syncController = new SyncController(dashboardService, adminService, syncService, chartService, statsService);
 
+const enumService = new EnumService(syncRepo); 
+const enumController = new EnumController(enumService);
+
 export const setupRoutes = (app: OpenAPIHono) => {
   app.route('/api/auth', createAuthRoutes(authController));
   app.route('/api/users', createUserRoutes(userController));
   app.route('/api', createSyncRoutes(syncController, syncController, syncController));
+  app.route('/api', createEnumRoutes(enumController));
 };

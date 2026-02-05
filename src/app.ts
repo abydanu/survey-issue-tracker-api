@@ -31,7 +31,7 @@ export const createApp = () => {
 
   app.use('*', cors({
     origin: (origin) => {
-      const allowed = ['http://localhost:3000', 'http://localhost:5000', 'https://suited-enormously-donkey.ngrok-free.app'];
+      const allowed = ['http://localhost:3000', 'http://localhost:5000', 'https://suited-enormously-donkey.ngrok-free.app', 'https://survey-issue-tracker.vercel.app'];
       if (!origin) return allowed[0];
       if (allowed.includes(origin)) return origin;
       if (origin.endsWith('.vercel.app')) return origin;
@@ -49,11 +49,13 @@ export const createApp = () => {
       name: 'Survey Issue Tracking API',
       version: '1.0.0',
       status: 'running',
-      documentation: '/docs'
+      documentation: '/docs',
+      endpoints: {
+        enums: '/api/enums',
+        specificEnum: '/api/enums/{enumName}'
+      }
     }, 'API is running');
   });
-
-  setupRoutes(app);
 
   app.doc('/api/openapi.json', openApiConfig);
 
@@ -62,7 +64,9 @@ export const createApp = () => {
     title: 'Survey Issue Tracking API Documentation',
     persistAuthorization: true,
     deepLinking: true,
-  }));  
+  }));
+
+  setupRoutes(app);  
 
   app.notFound((c: Context) => {
     return ApiResponseHelper.notFound(c, 'Endpoint not found');

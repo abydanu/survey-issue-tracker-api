@@ -7,7 +7,14 @@ import type {
   NdeUsulanB2BRow,
   NewBgesB2BOloRow,
 } from "../domain/sync.entity.js";
-import { StatusJt } from "../../../generated/prisma/client.js";
+import {
+  JenisKendala,
+  Keterangan,
+  PlanTematik,
+  StatusInstalasi,
+  StatusJt,
+  StatusUsulan,
+} from "../../../generated/prisma/client.js";
 import fs from "fs";
 
 function loadGoogleCredentials(): Record<string, unknown> {
@@ -52,6 +59,14 @@ export class GoogleSheetsService {
   private detailSheetName: string;
   private summarySheetId: number | null = null;
   private detailSheetId: number | null = null;
+  private enumSets = {
+    StatusJt: new Set(Object.values(StatusJt)),
+    JenisKendala: new Set(Object.values(JenisKendala)),
+    PlanTematik: new Set(Object.values(PlanTematik)),
+    StatusUsulan: new Set(Object.values(StatusUsulan)),
+    StatusInstalasi: new Set(Object.values(StatusInstalasi)),
+    Keterangan: new Set(Object.values(Keterangan)),
+  };
 
   constructor() {
     const credentials = loadGoogleCredentials();
@@ -158,6 +173,48 @@ export class GoogleSheetsService {
     }
   }
 
+  async readRawDetailRows(): Promise<any[][]> {
+    await this.ensureSheetConfigLoaded();
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.detailSheetName}!A:U`,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 3) return [];
+    return rows.slice(2);
+  }
+
+  async readRawSummaryRows(): Promise<any[][]> {
+    await this.ensureSheetConfigLoaded();
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.summarySheetName}!A:W`,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 3) return [];
+    return rows.slice(2);
+  }
+
+  async readRanges(ranges: string[]): Promise<Record<string, any[]>> {
+    await this.ensureSheetConfigLoaded();
+    const response = await this.sheets.spreadsheets.values.batchGet({
+      spreadsheetId: this.spreadsheetId,
+      ranges,
+      majorDimension: "COLUMNS",
+    });
+
+    const out: Record<string, any[]> = {};
+    const valueRanges = response.data.valueRanges || [];
+    for (let i = 0; i < ranges.length; i++) {
+      const key = ranges[i];
+      const values = valueRanges[i]?.values?.[0] || [];
+      if (key) out[key] = values;
+    }
+    return out;
+  }
+
   async readDetailData(): Promise<SurveyDetailSheetRow[]> {
     try {
       await this.ensureSheetConfigLoaded();
@@ -222,16 +279,17 @@ export class GoogleSheetsService {
       "WAITING CB": "WAITING_CB",
     };
     
-    return mappings[cleaned] || null;
+    const mapped = mappings[cleaned];
+    return mapped || this.normalizeEnumValue(cleaned);
   }
 
   private pickEnum<T extends string>(
     input: unknown,
-    allowed: readonly T[]
+    allowed: Set<string>
   ): T | null {
     const norm = this.normalizeEnumValue(input);
     if (!norm) return null;
-    return (allowed as readonly string[]).includes(norm) ? (norm as T) : null;
+    return allowed.has(norm) ? (norm as T) : null;
   }
 
   private denormalizeEnumValue(input: string | null | undefined): string {
@@ -406,12 +464,14 @@ export class GoogleSheetsService {
       }
 
       const rowIndex = await this.findDetailRowIndex(data.idKendala);
+      
       if (!rowIndex) {
-        throw new Error(
-          `Data dengan idKendala ${data.idKendala} tidak ditemukan di Google Sheets`
-        );
+        
+        logger.info(`Row not found for idKendala ${data.idKendala}, creating new row...`);
+        return await this.appendDetailRow(data as NewBgesB2BOloRow);
       }
 
+      
       const row = this.mapDetailToRow(data);
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
@@ -631,23 +691,8 @@ export class GoogleSheetsService {
         .replace(/^'/, ""),
 
       statusJt: (() => {
-        const v = this.pickEnum(row[1], [
-          "APPROVE",
-          "NOT_APPROVE",
-          "DROP_BY_WITEL",
-          "DROP_BY_AM",
-          "REVENUE_KURANG",
-          "AKI_TIDAK_LAYAK",
-          "NJKI_BELUM_LENGKAP",
-          "AANWIJZING",
-          "TUNGGU_JPP",
-          "CANCEL_PELANGGAN",
-          "INPUT_PAKET_LAIN",
-        ] as const);
-
-        if (!v) return null;
-
-        return StatusJt[v as keyof typeof StatusJt];
+        const v = this.normalizeEnumValue(row[1]);
+        return v ? (v as any) : null;
       })(),
       c2r,
       alamatInstalasi: row[9] ? String(row[9]).trim() : null,
@@ -741,66 +786,17 @@ export class GoogleSheetsService {
       latitude: row[9] ? String(row[9]).trim() : null,
       longitude: row[10] ? String(row[10]).trim() : null,
 
-      jenisKendala: this.pickEnum(row[11], [
-        "ODP_FULL",
-        "JARAK_PT1_250",
-        "BLANK_FO",
-        "JARAK_JAUH_500",
-        "BLANK_TIANG",
-        "NEED_MATAM_3PCS",
-      ] as const) as any,
-      planTematik: this.pickEnum(row[12], [
-        "PT1",
-        "PT2S",
-        "PT2NS",
-        "PT3",
-        "PT4",
-        "TKAP",
-      ] as const) as any,
+      jenisKendala: (this.normalizeEnumValue(row[11]) as any) ?? null,
+      planTematik: (this.normalizeEnumValue(row[12]) as any) ?? null,
 
       rabHld,
       ihldValue,
 
-      statusUsulan: this.pickEnum(row[15], [
-        "REVIEW_SDI",
-        "BELUM_INPUT",
-        "REVIEW_OPTIMA",
-        "REVIEW_ED",
-        "CEK_SDI_REGIONAL",
-        "APPROVED",
-        "DROP_LOP",
-        "KONFIRMASI_ULANG",
-        "NOT_APPROVED",
-        "PENDING",
-        "CANCEL",
-        "OGP_IHLD",
-        "WAITING_CARING",
-      ] as const) as any,
+      statusUsulan: (this.normalizeEnumValue(row[15]) as any) ?? null,
       statusIhld: row[16] ? String(row[16]).trim() : null,
       idEprop: row[17] ? String(row[17]).trim() : null,
       statusInstalasi: this.normalizeStatusInstalasi(row[18]) as any,
-      keterangan: this.pickEnum(row[19], [
-        "PELANGGAN_BATAL",
-        "PT1_ONLY",
-        "PERIJINAN",
-        "AKI_TIDAK_LAYAK",
-        "REDESIGN",
-        "INDIKASI_RESELLER",
-        "FEEDER_HABIS",
-        "KENDALA_IZIN_TANAM_TN",
-        "PORT_OLT_HABIS",
-        "MATTAM_TIANG",
-        "DISTRIBUSI_HABIS",
-        "MENUNGGU_M_OLT",
-        "MENUNGGU_RELOKASI_TIANG_PLN",
-        "CORE_DISTRIBUSI_CACAT",
-        "MENUNGGU_CO_FEEDER",
-        "PORT_EA_HABIS",
-        "INVALID_LOCATION",
-        "HOLD_BY_BGES",
-        "WAITING_REVIT_ODP",
-        "HOLD_BY_PED",
-      ] as const) as any,
+      keterangan: (this.normalizeEnumValue(row[19]) as any) ?? null,
       newSc: row[20] ? String(row[20]).trim() : null,
 
       namaOdp: null,
@@ -847,7 +843,7 @@ export class GoogleSheetsService {
       data.umur?.toString() || "",
       data.bln || "",
       data.tglInputUsulan
-        ? new Date(data.tglInputUsulan).toISOString().split("T")[0]
+        ? new Date(data.tglInputUsulan).toLocaleDateString('en-US')
         : "",
       data.idKendala || "",
       data.jenisOrder || "",

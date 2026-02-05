@@ -41,6 +41,13 @@ export class UserService {
       throw new Error('Username already exists');
     }
 
+    if (data.email) {
+      const existingEmail = await this.userRepo.findByEmail(data.email);
+      if (existingEmail) {
+        throw new Error('Email already exists');
+      }
+    }
+
     const user = await this.userRepo.create(data);
     logger.info(`User created: ${user.username}`);
     return this.toUserResponse(user);
@@ -56,6 +63,13 @@ export class UserService {
       const usernameExists = await this.userRepo.findByUsername(data.username);
       if (usernameExists) {
         throw new Error('Username already exists');
+      }
+    }
+
+    if (data.email && data.email !== existingUser.email) {
+      const emailExists = await this.userRepo.findByEmail(data.email);
+      if (emailExists) {
+        throw new Error('Email already exists');
       }
     }
 
@@ -80,6 +94,7 @@ export class UserService {
     return {
       id: user.id,
       username: user.username,
+      email: user.email,
       name: user.name,
       role: user.role,
       lastLoginAt: user.lastLoginAt,

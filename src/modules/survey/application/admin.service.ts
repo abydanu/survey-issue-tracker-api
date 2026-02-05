@@ -15,46 +15,6 @@ export class AdminService {
     this.syncService = new SyncService(syncRepo);
   }
 
-  async createSurvey(data: CreateSurveyDto): Promise<Survey> {
-    try {
-      if (data.nomorNcx) {
-        const existing = await this.syncRepo.findSurveyByNomorNc(data.nomorNcx);
-        if (existing) {
-          throw new Error(`Survey with nomor NCX/Starclick ${data.nomorNcx} already exists`);
-        }
-      }
-
-      const existingByNo = await this.syncRepo.findSurveyByNo(data.no);
-      if (existingByNo) {
-        throw new Error(`Survey with no ${data.no} already exists`);
-      }
-
-      const created = await this.syncRepo.createSurvey(data);
-
-      const summaryRow: SurveySummarySheetRow = {
-        ...(created as any),
-        no: created.no,
-        nomorNcx: created.nomorNcx ?? created.idKendala ?? "",
-      } as SurveySummarySheetRow;
-      this.syncService
-        .syncToSheets("create", "summary", summaryRow)
-        .catch((error) => {
-          logger.error(
-            `Non-blocking sync to sheets failed for new survey ${created.no}:`,
-            error
-          );
-        });
-
-      logger.info(
-        `Admin created survey: ${created.no} (nomorNcx: ${created.nomorNcx})`
-      );
-      return created;
-    } catch (error: any) {
-      logger.error("Error creating survey:", error);
-      throw error;
-    }
-  }
-
   async updateSurvey(nomorNcx: string, data: UpdateSurveyDto): Promise<Survey> {
     try {
       const existing = await this.syncRepo.findSurveyByNomorNc(nomorNcx);
@@ -83,6 +43,41 @@ export class AdminService {
       return updated;
     } catch (error: any) {
       logger.error("Error updating survey:", error);
+      throw error;
+    }
+  }
+
+
+  async updateTanggalInput(idKendala: string, tanggalInput: string): Promise<void> {
+    try {
+
+      const parsedDate = new Date(tanggalInput);
+      if (isNaN(parsedDate.getTime())) {
+        throw new Error('Format tanggal tidak valid. Gunakan format mm/dd/yyyy');
+      }
+
+      await this.syncRepo.updateTanggalInput(idKendala, parsedDate);
+
+
+      const fullData = await this.syncRepo.getMasterDataByIdKendala(idKendala);
+      if (fullData) {
+
+        this.syncService
+          .syncToSheets("update", "detail", {
+            ...fullData,
+            tglInputUsulan: parsedDate,
+          } as any)
+          .catch((error) => {
+            logger.error(
+              `Non-blocking sync to sheets failed for tanggal input ${idKendala}:`,
+              error
+            );
+          });
+      }
+
+      logger.info(`Admin updated tanggal input for ${idKendala}: ${tanggalInput} and synced to Google Sheets`);
+    } catch (error: any) {
+      logger.error("Error updating tanggal input:", error);
       throw error;
     }
   }

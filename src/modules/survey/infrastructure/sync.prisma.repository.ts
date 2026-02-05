@@ -1,5 +1,5 @@
-import prisma from '../../../infrastructure/database/prisma.js';
-import { Prisma, StatusJt } from '../../../generated/prisma/client.js';
+import prismaClient from '../../../infrastructure/database/prisma.js';
+import { Prisma, StatusJt, StatusInstalasi, PlanTematik, StatusUsulan, JenisKendala, Keterangan } from '../../../generated/prisma/client.js';
 import type { ISyncRepository } from '../domain/sync.repository.js';
 import type {
   Survey,
@@ -13,6 +13,142 @@ import type {
 } from '../domain/sync.entity.js';
 
 export class SyncPrismaRepository implements ISyncRepository {
+  prisma = prismaClient;
+
+  private validateStatusInstalasi(value: any): StatusInstalasi | null {
+    if (!value || typeof value !== 'string') return null;
+
+    const upperValue = value.toUpperCase().trim();
+    const validValues = Object.values(StatusInstalasi);
+
+    if (validValues.includes(upperValue as StatusInstalasi)) {
+      return upperValue as StatusInstalasi;
+    }
+
+    console.warn(`Invalid StatusInstalasi value: "${value}". Valid values are: ${validValues.join(', ')}`);
+    return null;
+  }
+
+  private validateStatusJt(value: any): StatusJt | null {
+    if (!value || typeof value !== 'string') return null;
+
+    const upperValue = value.toUpperCase().trim();
+    const validValues = Object.values(StatusJt);
+
+    if (validValues.includes(upperValue as StatusJt)) {
+      return upperValue as StatusJt;
+    }
+
+    console.warn(`Invalid StatusJt value: "${value}". Valid values are: ${validValues.join(', ')}`);
+    return null;
+  }
+
+  private validatePlanTematik(value: any): PlanTematik | null {
+    if (!value || typeof value !== 'string') return null;
+
+    const upperValue = value.toUpperCase().trim();
+    const validValues = Object.values(PlanTematik);
+
+    if (validValues.includes(upperValue as PlanTematik)) {
+      return upperValue as PlanTematik;
+    }
+
+    console.warn(`Invalid PlanTematik value: "${value}". Valid values are: ${validValues.join(', ')}`);
+    return null;
+  }
+
+  private validateStatusUsulan(value: any): StatusUsulan | null {
+    if (!value || typeof value !== 'string') return null;
+
+    const upperValue = value.toUpperCase().trim();
+    const validValues = Object.values(StatusUsulan);
+
+    if (validValues.includes(upperValue as StatusUsulan)) {
+      return upperValue as StatusUsulan;
+    }
+
+    console.warn(`Invalid StatusUsulan value: "${value}". Valid values are: ${validValues.join(', ')}`);
+    return null;
+  }
+
+  private validateJenisKendala(value: any): JenisKendala | null {
+    if (!value || typeof value !== 'string') return null;
+
+    const upperValue = value.toUpperCase().trim();
+    const validValues = Object.values(JenisKendala);
+
+    if (validValues.includes(upperValue as JenisKendala)) {
+      return upperValue as JenisKendala;
+    }
+
+    console.warn(`Invalid JenisKendala value: "${value}". Valid values are: ${validValues.join(', ')}`);
+    return null;
+  }
+
+  private validateKeterangan(value: any): Keterangan | null {
+    if (!value || typeof value !== 'string') return null;
+
+    const upperValue = value.toUpperCase().trim();
+    const validValues = Object.values(Keterangan);
+
+    if (validValues.includes(upperValue as Keterangan)) {
+      return upperValue as Keterangan;
+    }
+
+    console.warn(`Invalid Keterangan value: "${value}". Valid values are: ${validValues.join(', ')}`);
+    return null;
+  }
+
+
+  private compareDecimal(existing: any, newValue: any): boolean {
+    if (existing === null && newValue === null) return true;
+    if (existing === null || newValue === null) return false;
+    return existing.toString() === newValue.toString();
+  }
+
+
+  private async createMissingMasterData(nomorNcx: string, tx: any): Promise<boolean> {
+    try {
+      await tx.newBgesB2BOlo.create({
+        data: {
+          idKendala: nomorNcx,
+          syncStatus: 'SYNCED',
+          lastSyncAt: new Date(),
+
+          datel: null,
+          sto: null,
+          namaPelanggan: null,
+          latitude: null,
+          longitude: null,
+          jenisKendala: null,
+          planTematik: null,
+          rabHld: null,
+          ihldValue: null,
+          statusUsulan: null,
+          statusIhld: null,
+          idEprop: null,
+          statusInstalasi: null,
+          keterangan: null,
+          newSc: null,
+          namaOdp: null,
+          tglGolive: null,
+          umur: null,
+          bln: null,
+          tglInputUsulan: null,
+          jenisOrder: null,
+          avai: null,
+          used: null,
+          isTotal: null,
+          occPercentage: null,
+        }
+      });
+      console.log(`Created missing master data for nomorNcx: ${nomorNcx}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to create master data for nomorNcx: ${nomorNcx}:`, error);
+      return false;
+    }
+  }
   async findAllSurvey(query: DashboardQuery): Promise<{ data: Survey[]; total: number }> {
     const page = (query.page && typeof query.page === 'number' && query.page > 0) ? query.page : 1;
     const limit = (query.limit && typeof query.limit === 'number' && query.limit > 0) ? query.limit : 10;
@@ -29,7 +165,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       ];
     }
 
-    if (query.statusJt && query.statusJt.trim()) {
+    if (query.statusJt && query.statusJt.trim() && query.statusJt.trim().toLowerCase() !== 'all') {
       where.statusJt = {
         equals: query.statusJt.trim() as StatusJt,
       };
@@ -37,15 +173,15 @@ export class SyncPrismaRepository implements ISyncRepository {
 
     if (query.rabHldMin !== undefined || query.rabHldMax !== undefined) {
       const rabHldFilter: any = {};
-      
+
       if (query.rabHldMin !== undefined && query.rabHldMin !== null) {
         rabHldFilter.gte = new Prisma.Decimal(query.rabHldMin.toString());
       }
-      
+
       if (query.rabHldMax !== undefined && query.rabHldMax !== null) {
         rabHldFilter.lte = new Prisma.Decimal(query.rabHldMax.toString());
       }
-      
+
       where.masterData = {
         ...(where.masterData as Prisma.NewBgesB2BOloWhereInput),
         rabHld: rabHldFilter,
@@ -83,7 +219,7 @@ export class SyncPrismaRepository implements ISyncRepository {
     }
 
     const [data, total] = await Promise.all([
-      prisma.ndeUsulanB2B.findMany({
+      this.prisma.ndeUsulanB2B.findMany({
         where,
         include: {
           masterData: true,
@@ -92,7 +228,7 @@ export class SyncPrismaRepository implements ISyncRepository {
         skip: (page - 1) * limit,
         take: limit,
       }),
-      prisma.ndeUsulanB2B.count({ where }),
+      this.prisma.ndeUsulanB2B.count({ where }),
     ]);
 
     return {
@@ -146,7 +282,7 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async findSurveyByNo(no: string): Promise<Survey | null> {
-    const survey = await prisma.ndeUsulanB2B.findUnique({
+    const survey = await this.prisma.ndeUsulanB2B.findUnique({
       where: { no },
       include: {
         masterData: true,
@@ -159,7 +295,7 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async findSurveyByNomorNc(nomorNcx: string): Promise<Survey | null> {
-    const survey = await prisma.ndeUsulanB2B.findFirst({
+    const survey = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
       include: {
         masterData: true,
@@ -173,27 +309,27 @@ export class SyncPrismaRepository implements ISyncRepository {
 
   async createSurvey(data: CreateSurveyDto): Promise<Survey> {
     const nomorNcx = data.nomorNcx || data.idKendala;
-    
+
     if (!nomorNcx || !String(nomorNcx).trim()) {
       throw new Error(
         'Field "nomorNcx" wajib diisi untuk membuat data survey. ' +
         'Pastikan nomor NCX/Starclick tidak kosong.'
       );
     }
-  
-    const masterExists = await prisma.newBgesB2BOlo.findUnique({
+
+    const masterExists = await this.prisma.newBgesB2BOlo.findUnique({
       where: { idKendala: String(nomorNcx).trim() },
       select: { idKendala: true },
     });
-  
+
     if (!masterExists) {
       throw new Error(
         `Master data (Sheet 2) untuk nomorNcx "${String(nomorNcx).trim()}" tidak ditemukan. ` +
         `Silakan sync Sheet 2 terlebih dahulu atau pastikan data sudah ada.`
       );
     }
-  
-    const survey = await prisma.ndeUsulanB2B.create({
+
+    const survey = await this.prisma.ndeUsulanB2B.create({
       data: {
         no: data.no,
         masterData: {
@@ -218,12 +354,12 @@ export class SyncPrismaRepository implements ISyncRepository {
         masterData: true,
       },
     });
-  
+
     return this.mapToSurvey(survey);
   }
 
   async updateSurvey(nomorNcx: string, data: UpdateSurveyDto): Promise<Survey> {
-    const existing = await prisma.ndeUsulanB2B.findFirst({
+    const existing = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
       include: { masterData: true },
     });
@@ -232,6 +368,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);
     }
 
+    // Prepare update data for NDE USULAN B2B
     const updateData: any = {};
     if (data.statusJt !== undefined) updateData.statusJt = data.statusJt;
     if (data.c2r !== undefined) updateData.c2r = data.c2r !== null ? new Prisma.Decimal(data.c2r.toString()) : null;
@@ -239,7 +376,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       if (data.nomorNcx === null || data.nomorNcx === '') {
         throw new Error('Field "nomorNcx" tidak boleh kosong (relasi master data wajib)');
       }
-      const masterExists = await prisma.newBgesB2BOlo.findUnique({
+      const masterExists = await this.prisma.newBgesB2BOlo.findUnique({
         where: { idKendala: String(data.nomorNcx).trim() },
         select: { idKendala: true },
       });
@@ -260,20 +397,54 @@ export class SyncPrismaRepository implements ISyncRepository {
     if (data.namaOdp !== undefined) updateData.namaOdp = data.namaOdp;
     if (data.jarakOdp !== undefined) updateData.jarakOdp = data.jarakOdp ? new Prisma.Decimal(data.jarakOdp.toString()) : null;
     if (data.keteranganText !== undefined) updateData.keterangan = data.keteranganText;
+    
+    // Field baru untuk sync status
+    if (data.statusUsulan !== undefined) updateData.statusUsulan = data.statusUsulan;
+    if (data.statusInstalasi !== undefined) updateData.statusInstalasi = data.statusInstalasi;
 
-    const survey = await prisma.ndeUsulanB2B.update({
-      where: { id: existing.id },
-      data: updateData,
-      include: {
-        masterData: true,
-      },
+    // LOGIC BARU: Sync status antara kedua tabel dalam transaction
+    const survey = await this.prisma.$transaction(async (tx) => {
+      // Update NDE USULAN B2B
+      const updatedSurvey = await tx.ndeUsulanB2B.update({
+        where: { id: existing.id },
+        data: updateData,
+        include: {
+          masterData: true,
+        },
+      });
+
+      // Sync status ke NEW BGES B2B jika status berubah
+      if (data.statusJt !== undefined || data.statusUsulan !== undefined || data.statusInstalasi !== undefined) {
+        const masterUpdateData: any = {
+          lastSyncAt: new Date(),
+        };
+
+        // Sync status dari NDE USULAN B2B ke NEW BGES B2B
+        if (data.statusUsulan !== undefined) {
+          masterUpdateData.statusUsulan = this.validateStatusUsulan(data.statusUsulan);
+        }
+        if (data.statusInstalasi !== undefined) {
+          masterUpdateData.statusInstalasi = this.validateStatusInstalasi(data.statusInstalasi);
+        }
+
+        // Update master data jika ada perubahan status
+        if (Object.keys(masterUpdateData).length > 1) { // lebih dari lastSyncAt
+          await tx.newBgesB2BOlo.update({
+            where: { idKendala: existing.nomorNcx },
+            data: masterUpdateData,
+          });
+          console.log(`Synced status from NDE USULAN B2B to NEW BGES B2B for ${existing.nomorNcx}`);
+        }
+      }
+
+      return updatedSurvey;
     });
 
     return this.mapToSurvey(survey);
   }
 
   async deleteSurvey(nomorNcx: string): Promise<void> {
-    const existing = await prisma.ndeUsulanB2B.findFirst({
+    const existing = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
     });
 
@@ -281,9 +452,65 @@ export class SyncPrismaRepository implements ISyncRepository {
       throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);
     }
 
-    await prisma.ndeUsulanB2B.delete({
+    await this.prisma.ndeUsulanB2B.delete({
       where: { id: existing.id },
     });
+  }
+
+  // Method baru untuk update tanggal input di NEW BGES B2B dengan format mm/dd/yyyy
+  async updateTanggalInput(idKendala: string, tanggalInput: Date): Promise<void> {
+    const existing = await this.prisma.newBgesB2BOlo.findUnique({
+      where: { idKendala: idKendala.trim() },
+    });
+
+    if (!existing) {
+      throw new Error(`Master data dengan idKendala ${idKendala} tidak ditemukan`);
+    }
+
+    await this.prisma.newBgesB2BOlo.update({
+      where: { idKendala: idKendala.trim() },
+      data: {
+        tglInputUsulan: tanggalInput,
+        lastSyncAt: new Date(),
+      },
+    });
+
+    console.log(`Updated tanggal input for ${idKendala}: ${tanggalInput.toLocaleDateString('en-US')}`);
+  }
+
+  // Method untuk ambil data lengkap master data
+  async getMasterDataByIdKendala(idKendala: string): Promise<any | null> {
+    const masterData = await this.prisma.newBgesB2BOlo.findUnique({
+      where: { idKendala: idKendala.trim() },
+    });
+
+    if (!masterData) {
+      return null;
+    }
+
+    // Convert ke format yang sesuai dengan NewBgesB2BOloRow
+    return {
+      idKendala: masterData.idKendala,
+      umur: masterData.umur,
+      bln: masterData.bln,
+      tglInputUsulan: masterData.tglInputUsulan,
+      jenisOrder: masterData.jenisOrder,
+      datel: masterData.datel,
+      sto: masterData.sto,
+      namaPelanggan: masterData.namaPelanggan,
+      latitude: masterData.latitude,
+      longitude: masterData.longitude,
+      jenisKendala: masterData.jenisKendala,
+      planTematik: masterData.planTematik,
+      rabHld: masterData.rabHld,
+      ihldValue: masterData.ihldValue,
+      statusUsulan: masterData.statusUsulan,
+      statusIhld: masterData.statusIhld,
+      idEprop: masterData.idEprop,
+      statusInstalasi: masterData.statusInstalasi,
+      keterangan: masterData.keterangan,
+      newSc: masterData.newSc,
+    };
   }
 
   async syncFromSheets(summaryData: SurveySummarySheetRow[], detailData: SurveyDetailSheetRow[]): Promise<void> {
@@ -297,8 +524,8 @@ export class SyncPrismaRepository implements ISyncRepository {
     }
 
     for (const batch of detailBatches) {
-      await prisma.$transaction(
-        async (tx) => {
+      await this.prisma.$transaction(
+        async (tx: any) => {
           await Promise.all(
             batch.map((detail) => {
               if (!detail.idKendala || !detail.idKendala.trim()) {
@@ -352,12 +579,20 @@ export class SyncPrismaRepository implements ISyncRepository {
                 createData.longitude = detail.longitude ?? null;
               }
               if (detail.jenisKendala !== undefined) {
-                updateData.jenisKendala = detail.jenisKendala ?? null;
-                createData.jenisKendala = detail.jenisKendala ?? null;
+                const validJenisKendala = this.validateJenisKendala(detail.jenisKendala);
+                updateData.jenisKendala = validJenisKendala;
+                createData.jenisKendala = validJenisKendala;
+                if (detail.jenisKendala && !validJenisKendala) {
+                  console.warn(`Invalid JenisKendala for record idKendala: ${detail.idKendala}, value: "${detail.jenisKendala}"`);
+                }
               }
               if (detail.planTematik !== undefined) {
-                updateData.planTematik = detail.planTematik ?? null;
-                createData.planTematik = detail.planTematik ?? null;
+                const validPlanTematik = this.validatePlanTematik(detail.planTematik);
+                updateData.planTematik = validPlanTematik;
+                createData.planTematik = validPlanTematik;
+                if (detail.planTematik && !validPlanTematik) {
+                  console.warn(`Invalid PlanTematik for record idKendala: ${detail.idKendala}, value: "${detail.planTematik}"`);
+                }
               }
               if (detail.rabHld !== undefined) {
                 updateData.rabHld = detail.rabHld !== null ? new Prisma.Decimal(detail.rabHld.toString()) : null;
@@ -384,8 +619,12 @@ export class SyncPrismaRepository implements ISyncRepository {
                 createData.statusInstalasi = detail.statusInstalasi ?? null;
               }
               if (detail.keterangan !== undefined) {
-                updateData.keterangan = detail.keterangan ?? null;
-                createData.keterangan = detail.keterangan ?? null;
+                const validKeterangan = this.validateKeterangan(detail.keterangan);
+                updateData.keterangan = validKeterangan;
+                createData.keterangan = validKeterangan;
+                if (detail.keterangan && !validKeterangan) {
+                  console.warn(`Invalid Keterangan for record idKendala: ${detail.idKendala}, value: "${detail.keterangan}"`);
+                }
               }
               if (detail.newSc !== undefined) {
                 updateData.newSc = detail.newSc ?? null;
@@ -448,7 +687,7 @@ export class SyncPrismaRepository implements ISyncRepository {
         continue;
       }
 
-      const masterExists = await prisma.newBgesB2BOlo.findUnique({
+      const masterExists = await this.prisma.newBgesB2BOlo.findUnique({
         where: { idKendala: String(nomorNcx).trim() },
         select: { idKendala: true }
       });
@@ -469,144 +708,765 @@ export class SyncPrismaRepository implements ISyncRepository {
     }
 
     for (const batch of summaryBatches) {
-      await prisma.$transaction(
-        async (tx) => {
-          await Promise.all(
-            batch.map((summary) => {
-              const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
-              const no = summary.no || (summary as any).NO;
+      try {
+        await this.prisma.$transaction(
+          async (tx: any) => {
+            const results = await Promise.all(
+              batch.map(async (summary) => {
+                const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
+                const no = summary.no || (summary as any).NO;
 
-              const updateData: any = {
-                syncStatus: 'SYNCED',
-                lastSyncAt: new Date(),
-              };
-              updateData.no = no;
-              const createData: any = {
-                no: no,
-                masterData: {
-                  connect: { idKendala: String(nomorNcx).trim() },
-                },
-                syncStatus: 'SYNCED',
-                lastSyncAt: new Date(),
-              };
+                try {
 
-              updateData.masterData = {
-                connect: { idKendala: String(nomorNcx).trim() },
-              };
+                  const existingRecord = await tx.ndeUsulanB2B.findUnique({
+                    where: { nomorNcx: String(nomorNcx).trim() },
+                    select: {
+                      no: true,
+                      nomorNcx: true,
+                      statusJt: true,
+                      c2r: true,
+                      alamatInstalasi: true,
+                      jenisLayanan: true,
+                      nilaiKontrak: true,
+                      rabSurvey: true,
+                      nomorNde: true,
+                      progressJt: true,
+                      namaOdp: true,
+                      jarakOdp: true,
+                      keterangan: true,
+                      datel: true,
+                      sto: true,
+                      namaPelanggan: true,
+                      latitude: true,
+                      longitude: true,
+                      ihldLopId: true,
+                      planTematik: true,
+                      rabHld: true,
+                      statusUsulan: true,
+                      statusInstalasi: true,
+                      lastSyncAt: true
+                    }
+                  });
 
-              if (summary.statusJt !== undefined) {
-                updateData.statusJt = summary.statusJt ?? null;
-                createData.statusJt = summary.statusJt ?? null;
-              }
-              if (summary.c2r !== undefined) {
-                updateData.c2r = summary.c2r !== null ? new Prisma.Decimal(summary.c2r.toString()) : null;
-                createData.c2r = summary.c2r !== null ? new Prisma.Decimal(summary.c2r.toString()) : null;
-              }
-              if (summary.alamatInstalasi !== undefined) {
-                updateData.alamatInstalasi = summary.alamatInstalasi ?? null;
-                createData.alamatInstalasi = summary.alamatInstalasi ?? null;
-              }
-              if (summary.jenisLayanan !== undefined) {
-                updateData.jenisLayanan = summary.jenisLayanan ?? null;
-                createData.jenisLayanan = summary.jenisLayanan ?? null;
-              }
-              if (summary.nilaiKontrak !== undefined) {
-                updateData.nilaiKontrak = summary.nilaiKontrak !== null ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null;
-                createData.nilaiKontrak = summary.nilaiKontrak !== null ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null;
-              }
-              if (summary.rabSurvey !== undefined) {
-                updateData.rabSurvey = summary.rabSurvey !== null ? new Prisma.Decimal(summary.rabSurvey.toString()) : null;
-                createData.rabSurvey = summary.rabSurvey !== null ? new Prisma.Decimal(summary.rabSurvey.toString()) : null;
-              }
-              if (summary.nomorNde !== undefined) {
-                updateData.nomorNde = summary.nomorNde ?? null;
-                createData.nomorNde = summary.nomorNde ?? null;
-              }
-              if (summary.progressJt !== undefined) {
-                updateData.progressJt = summary.progressJt ?? null;
-                createData.progressJt = summary.progressJt ?? null;
-              }
-              if (summary.namaOdp !== undefined) {
-                updateData.namaOdp = summary.namaOdp ?? null;
-                createData.namaOdp = summary.namaOdp ?? null;
-              }
-              if (summary.jarakOdp !== undefined) {
-                updateData.jarakOdp = summary.jarakOdp !== null ? new Prisma.Decimal(summary.jarakOdp.toString()) : null;
-                createData.jarakOdp = summary.jarakOdp !== null ? new Prisma.Decimal(summary.jarakOdp.toString()) : null;
-              }
-              if (summary.keterangan !== undefined) {
-                updateData.keterangan = summary.keterangan ?? null;
-                createData.keterangan = summary.keterangan ?? null;
-              }
+                  const updateData: any = {
+                    syncStatus: 'SYNCED',
+                    lastSyncAt: new Date(),
+                  };
+                  const createData: any = {
+                    no: no,
+                    masterData: {
+                      connect: { idKendala: String(nomorNcx).trim() },
+                    },
+                    syncStatus: 'SYNCED',
+                    lastSyncAt: new Date(),
+                  };
 
-              if (summary.datel !== undefined) {
-                updateData.datel = summary.datel ?? null;
-                createData.datel = summary.datel ?? null;
-              }
-              if (summary.sto !== undefined) {
-                updateData.sto = summary.sto ?? null;
-                createData.sto = summary.sto ?? null;
-              }
-              if (summary.namaPelanggan !== undefined) {
-                updateData.namaPelanggan = summary.namaPelanggan ?? null;
-                createData.namaPelanggan = summary.namaPelanggan ?? null;
-              }
-              if (summary.latitude !== undefined) {
-                updateData.latitude = summary.latitude ?? null;
-                createData.latitude = summary.latitude ?? null;
-              }
-              if (summary.longitude !== undefined) {
-                updateData.longitude = summary.longitude ?? null;
-                createData.longitude = summary.longitude ?? null;
-              }
-              if (summary.ihldLopId !== undefined) {
-                updateData.ihldLopId = summary.ihldLopId ?? null;
-                createData.ihldLopId = summary.ihldLopId ?? null;
-              }
-              if (summary.planTematik !== undefined) {
-                updateData.planTematik = summary.planTematik ?? null;
-                createData.planTematik = summary.planTematik ?? null;
-              }
-              if (summary.rabHld !== undefined) {
-                updateData.rabHld = summary.rabHld !== null ? new Prisma.Decimal(summary.rabHld.toString()) : null;
-                createData.rabHld = summary.rabHld !== null ? new Prisma.Decimal(summary.rabHld.toString()) : null;
-              }
-              if (summary.statusUsulan !== undefined) {
-                updateData.statusUsulan = summary.statusUsulan ?? null;
-                createData.statusUsulan = summary.statusUsulan ?? null;
-              }
-              if (summary.statusInstalasi !== undefined) {
-                updateData.statusInstalasi = summary.statusInstalasi ?? null;
-                createData.statusInstalasi = summary.statusInstalasi ?? null;
-              }
+                  updateData.masterData = {
+                    connect: { idKendala: String(nomorNcx).trim() },
+                  };
 
-              
-              console.log('Upserting NdeUsulanB2B with data:', {
-                where: { no: no },
-                updateFields: Object.keys(updateData),
-                createFields: Object.keys(createData),
-                nomorNcx: String(nomorNcx).trim()
-              });
+                  let hasChanges = false;
 
-              return tx.ndeUsulanB2B.upsert({
-                where: { nomorNcx: String(nomorNcx).trim() },
-                update: updateData,
-                create: createData,
-              });
-            })
-          );
-        },
-        {
-          maxWait: 30000,
-          timeout: 60000,
-        }
-      );
+
+                  if (summary.statusJt !== undefined) {
+                    const validStatusJt = this.validateStatusJt(summary.statusJt);
+                    if (!existingRecord || existingRecord.statusJt !== validStatusJt) {
+                      hasChanges = true;
+                    }
+                    updateData.statusJt = validStatusJt;
+                    createData.statusJt = validStatusJt;
+                    if (summary.statusJt && !validStatusJt) {
+                      console.warn(`Invalid StatusJt for record no: ${no}, value: "${summary.statusJt}"`);
+                    }
+                  }
+                  if (summary.c2r !== undefined) {
+                    const newC2r = summary.c2r !== null ? new Prisma.Decimal(summary.c2r.toString()) : null;
+                    if (!existingRecord || !this.compareDecimal(existingRecord.c2r, newC2r)) {
+                      hasChanges = true;
+                    }
+                    updateData.c2r = newC2r;
+                    createData.c2r = newC2r;
+                  }
+                  if (summary.alamatInstalasi !== undefined) {
+                    const newAlamat = summary.alamatInstalasi ?? null;
+                    if (!existingRecord || existingRecord.alamatInstalasi !== newAlamat) {
+                      hasChanges = true;
+                    }
+                    updateData.alamatInstalasi = newAlamat;
+                    createData.alamatInstalasi = newAlamat;
+                  }
+                  if (summary.jenisLayanan !== undefined) {
+                    const newJenisLayanan = summary.jenisLayanan ?? null;
+                    if (!existingRecord || existingRecord.jenisLayanan !== newJenisLayanan) {
+                      hasChanges = true;
+                    }
+                    updateData.jenisLayanan = newJenisLayanan;
+                    createData.jenisLayanan = newJenisLayanan;
+                  }
+                  if (summary.nilaiKontrak !== undefined) {
+                    const newNilaiKontrak = summary.nilaiKontrak !== null ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null;
+                    if (!existingRecord || !this.compareDecimal(existingRecord.nilaiKontrak, newNilaiKontrak)) {
+                      hasChanges = true;
+                    }
+                    updateData.nilaiKontrak = newNilaiKontrak;
+                    createData.nilaiKontrak = newNilaiKontrak;
+                  }
+                  if (summary.rabSurvey !== undefined) {
+                    const newRabSurvey = summary.rabSurvey !== null ? new Prisma.Decimal(summary.rabSurvey.toString()) : null;
+                    if (!existingRecord || !this.compareDecimal(existingRecord.rabSurvey, newRabSurvey)) {
+                      hasChanges = true;
+                    }
+                    updateData.rabSurvey = newRabSurvey;
+                    createData.rabSurvey = newRabSurvey;
+                  }
+
+                  const fieldsToCheck = [
+                    { key: 'nomorNde', value: summary.nomorNde ?? null },
+                    { key: 'progressJt', value: summary.progressJt ?? null },
+                    { key: 'namaOdp', value: summary.namaOdp ?? null },
+                    { key: 'keterangan', value: summary.keterangan ?? null },
+                    { key: 'datel', value: summary.datel ?? null },
+                    { key: 'sto', value: summary.sto ?? null },
+                    { key: 'namaPelanggan', value: summary.namaPelanggan ?? null },
+                    { key: 'latitude', value: summary.latitude ?? null },
+                    { key: 'longitude', value: summary.longitude ?? null },
+                    { key: 'ihldLopId', value: summary.ihldLopId ?? null }
+                  ];
+
+                  for (const field of fieldsToCheck) {
+                    if (summary[field.key as keyof typeof summary] !== undefined) {
+                      if (!existingRecord || (existingRecord as any)[field.key] !== field.value) {
+                        hasChanges = true;
+                      }
+                      updateData[field.key] = field.value;
+                      createData[field.key] = field.value;
+                    }
+                  }
+
+
+                  if (summary.jarakOdp !== undefined) {
+                    const newJarakOdp = summary.jarakOdp !== null ? new Prisma.Decimal(summary.jarakOdp.toString()) : null;
+                    if (!existingRecord || !this.compareDecimal(existingRecord.jarakOdp, newJarakOdp)) {
+                      hasChanges = true;
+                    }
+                    updateData.jarakOdp = newJarakOdp;
+                    createData.jarakOdp = newJarakOdp;
+                  }
+                  if (summary.rabHld !== undefined) {
+                    const newRabHld = summary.rabHld !== null ? new Prisma.Decimal(summary.rabHld.toString()) : null;
+                    if (!existingRecord || !this.compareDecimal(existingRecord.rabHld, newRabHld)) {
+                      hasChanges = true;
+                    }
+                    updateData.rabHld = newRabHld;
+                    createData.rabHld = newRabHld;
+                  }
+
+
+                  if (summary.planTematik !== undefined) {
+                    const validPlanTematik = this.validatePlanTematik(summary.planTematik);
+                    if (!existingRecord || existingRecord.planTematik !== validPlanTematik) {
+                      hasChanges = true;
+                    }
+                    updateData.planTematik = validPlanTematik;
+                    createData.planTematik = validPlanTematik;
+                    if (summary.planTematik && !validPlanTematik) {
+                      console.warn(`Invalid PlanTematik for record no: ${no}, value: "${summary.planTematik}"`);
+                    }
+                  }
+                  if (summary.statusUsulan !== undefined) {
+                    const validStatusUsulan = this.validateStatusUsulan(summary.statusUsulan);
+                    if (!existingRecord || existingRecord.statusUsulan !== validStatusUsulan) {
+                      hasChanges = true;
+                    }
+                    updateData.statusUsulan = validStatusUsulan;
+                    createData.statusUsulan = validStatusUsulan;
+                    if (summary.statusUsulan && !validStatusUsulan) {
+                      console.warn(`Invalid StatusUsulan for record no: ${no}, value: "${summary.statusUsulan}"`);
+                    }
+                  }
+                  if (summary.statusInstalasi !== undefined) {
+                    const validStatusInstalasi = this.validateStatusInstalasi(summary.statusInstalasi);
+                    if (!existingRecord || existingRecord.statusInstalasi !== validStatusInstalasi) {
+                      hasChanges = true;
+                    }
+                    updateData.statusInstalasi = validStatusInstalasi;
+                    createData.statusInstalasi = validStatusInstalasi;
+                    if (summary.statusInstalasi && !validStatusInstalasi) {
+                      console.warn(`Invalid StatusInstalasi for record no: ${no}, value: "${summary.statusInstalasi}"`);
+                    }
+                  }
+
+
+                  if (existingRecord && !hasChanges) {
+                    console.log(`Skipping record no: ${no}, nomorNcx: ${String(nomorNcx).trim()} - No changes detected`);
+                    return null;
+                  }
+
+                  const operation = existingRecord ? 'UPDATE' : 'CREATE';
+                  console.log(`${operation} NdeUsulanB2B record:`, {
+                    no: no,
+                    nomorNcx: String(nomorNcx).trim(),
+                    hasChanges: hasChanges,
+                    updateFields: Object.keys(updateData),
+                    createFields: Object.keys(createData)
+                  });
+
+                  return tx.ndeUsulanB2B.upsert({
+                    where: { nomorNcx: String(nomorNcx).trim() },
+                    update: updateData,
+                    create: createData,
+                  });
+                } catch (recordError: any) {
+                  console.error(`Error upserting record no: ${no}, nomorNcx: ${nomorNcx}:`, recordError.message);
+                  throw recordError;
+                }
+              })
+            );
+
+
+            const processedResults = results.filter(result => result !== null);
+            const skippedCount = results.length - processedResults.length;
+
+            if (skippedCount > 0) {
+              console.log(`Batch completed: ${processedResults.length} processed, ${skippedCount} skipped (no changes)`);
+            }
+          },
+          {
+            maxWait: 30000,
+            timeout: 60000,
+          }
+        );
+      } catch (batchError: any) {
+        console.error(`Error processing batch:`, batchError.message);
+        throw batchError;
+      }
     }
 
     console.log('Step 2 completed: Related data synced successfully');
 
     if (invalidSummaryRows.length > 0) {
       console.warn(`Warning: ${invalidSummaryRows.length} records were skipped due to missing master data`);
+    }
+
+
+    console.log(`Sync Summary:
+    - Total summary records processed: ${validSummaryRows.length}
+    - Invalid records skipped: ${invalidSummaryRows.length}
+    - Records with missing master data: ${invalidSummaryRows.length}
+    `);
+  }
+
+  async syncFromSheetsWithBatch(
+    summaryData: any[],
+    detailData: any[]
+  ): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  }> {
+    const BATCH_SIZE = 5;
+    let stats = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: 0,
+    };
+
+    try {
+
+      if (detailData.length > 0) {
+        console.log(`Processing ${detailData.length} detail records...`);
+        const detailRows = detailData as NewBgesB2BOloRow[];
+
+        for (let i = 0; i < detailRows.length; i += BATCH_SIZE) {
+          const batch = detailRows.slice(i, i + BATCH_SIZE);
+
+          await this.prisma.$transaction(
+            async (tx) => {
+              for (const detail of batch) {
+                try {
+                  const existingRecord = await tx.newBgesB2BOlo.findUnique({
+                    where: { idKendala: detail.idKendala.trim() },
+                  });
+
+
+                  const updateData: any = {
+                    syncStatus: 'SYNCED',
+                    lastSyncAt: new Date(),
+                  };
+                  const createData: any = {
+                    idKendala: detail.idKendala.trim(),
+                    syncStatus: 'SYNCED',
+                    lastSyncAt: new Date(),
+                  };
+
+
+                  if (detail.jenisKendala !== undefined) {
+                    const validJenisKendala = this.validateJenisKendala(detail.jenisKendala);
+                    updateData.jenisKendala = validJenisKendala;
+                    createData.jenisKendala = validJenisKendala;
+                  }
+                  if (detail.planTematik !== undefined) {
+                    const validPlanTematik = this.validatePlanTematik(detail.planTematik);
+                    updateData.planTematik = validPlanTematik;
+                    createData.planTematik = validPlanTematik;
+                  }
+                  if (detail.keterangan !== undefined) {
+                    const validKeterangan = this.validateKeterangan(detail.keterangan);
+                    updateData.keterangan = validKeterangan;
+                    createData.keterangan = validKeterangan;
+                  }
+
+
+                  const simpleFields = ['datel', 'sto', 'namaPelanggan', 'latitude', 'longitude', 'statusUsulan', 'statusIhld', 'idEprop', 'statusInstalasi', 'newSc', 'namaOdp'];
+                  for (const field of simpleFields) {
+                    if (detail[field as keyof typeof detail] !== undefined) {
+                      updateData[field] = detail[field as keyof typeof detail] ?? null;
+                      createData[field] = detail[field as keyof typeof detail] ?? null;
+                    }
+                  }
+
+                  const result = await tx.newBgesB2BOlo.upsert({
+                    where: { idKendala: detail.idKendala.trim() },
+                    update: updateData,
+                    create: createData,
+                  });
+
+                  if (existingRecord) {
+                    stats.updated++;
+                  } else {
+                    stats.created++;
+                  }
+                } catch (error) {
+                  console.error(`Error processing detail record ${detail.idKendala}:`, error);
+                  stats.errors++;
+                }
+              }
+            },
+            {
+              maxWait: 15000,
+              timeout: 30000,
+            }
+          );
+        }
+      }
+
+
+      if (summaryData.length > 0) {
+        console.log(`Processing ${summaryData.length} summary records...`);
+        const summaryRows = summaryData as NdeUsulanB2BRow[];
+
+        for (let i = 0; i < summaryRows.length; i += BATCH_SIZE) {
+          const batch = summaryRows.slice(i, i + BATCH_SIZE);
+
+          await this.prisma.$transaction(
+            async (tx) => {
+              for (const summary of batch) {
+                try {
+                  const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
+                  const no = summary.no || (summary as any).NO;
+
+                  if (!no || !nomorNcx || !String(nomorNcx).trim()) {
+                    console.warn(`Skipping invalid record: no=${no}, nomorNcx=${nomorNcx}`);
+                    stats.skipped++;
+                    continue;
+                  }
+
+
+                  const masterExists = await tx.newBgesB2BOlo.findUnique({
+                    where: { idKendala: String(nomorNcx).trim() },
+                    select: { idKendala: true }
+                  });
+
+                  if (!masterExists) {
+                    console.warn(`Master data not found for nomorNcx: ${nomorNcx} (no: ${no})`);
+                    stats.skipped++;
+                    continue;
+                  }
+
+                  const existingRecord = await tx.ndeUsulanB2B.findUnique({
+                    where: { nomorNcx: String(nomorNcx).trim() },
+                  });
+
+
+                  const updateData: any = {
+                    syncStatus: 'SYNCED',
+                    lastSyncAt: new Date(),
+                    masterData: {
+                      connect: { idKendala: String(nomorNcx).trim() },
+                    },
+                  };
+                  const createData: any = {
+                    no: no,
+                    masterData: {
+                      connect: { idKendala: String(nomorNcx).trim() },
+                    },
+                    syncStatus: 'SYNCED',
+                    lastSyncAt: new Date(),
+                  };
+
+                  if (summary.statusJt !== undefined) {
+                    const validStatusJt = this.validateStatusJt(summary.statusJt);
+                    updateData.statusJt = validStatusJt;
+                    createData.statusJt = validStatusJt;
+                  }
+                  if (summary.planTematik !== undefined) {
+                    const validPlanTematik = this.validatePlanTematik(summary.planTematik);
+                    updateData.planTematik = validPlanTematik;
+                    createData.planTematik = validPlanTematik;
+                  }
+                  if (summary.statusUsulan !== undefined) {
+                    const validStatusUsulan = this.validateStatusUsulan(summary.statusUsulan);
+                    updateData.statusUsulan = validStatusUsulan;
+                    createData.statusUsulan = validStatusUsulan;
+                  }
+                  if (summary.statusInstalasi !== undefined) {
+                    const validStatusInstalasi = this.validateStatusInstalasi(summary.statusInstalasi);
+                    updateData.statusInstalasi = validStatusInstalasi;
+                    createData.statusInstalasi = validStatusInstalasi;
+                  }
+
+                  const simpleFields = ['alamatInstalasi', 'jenisLayanan', 'nomorNde', 'progressJt', 'namaOdp', 'keterangan', 'datel', 'sto', 'namaPelanggan', 'latitude', 'longitude', 'ihldLopId'];
+                  for (const field of simpleFields) {
+                    if (summary[field as keyof typeof summary] !== undefined) {
+                      updateData[field] = summary[field as keyof typeof summary] ?? null;
+                      createData[field] = summary[field as keyof typeof summary] ?? null;
+                    }
+                  }
+
+                  const decimalFields = ['c2r', 'nilaiKontrak', 'rabSurvey', 'jarakOdp', 'rabHld'];
+                  for (const field of decimalFields) {
+                    if (summary[field as keyof typeof summary] !== undefined) {
+                      const value = summary[field as keyof typeof summary];
+                      const decimalValue = (value !== null && value !== undefined) ? new Prisma.Decimal(value.toString()) : null;
+                      updateData[field] = decimalValue;
+                      createData[field] = decimalValue;
+                    }
+                  }
+
+                  const result = await tx.ndeUsulanB2B.upsert({
+                    where: { nomorNcx: String(nomorNcx).trim() },
+                    update: updateData,
+                    create: createData,
+                  });
+
+                  if (existingRecord) {
+                    stats.updated++;
+                  } else {
+                    stats.created++;
+                  }
+                } catch (error) {
+                  console.error(`Error processing summary record:`, error);
+                  stats.errors++;
+                }
+              }
+            },
+            {
+              maxWait: 15000,
+              timeout: 30000,
+            }
+          );
+        }
+      }
+
+      console.log(`Batch sync completed:`, stats);
+      return stats;
+    } catch (error) {
+      console.error('Error in batch sync:', error);
+      throw error;
+    }
+  }
+
+  async autoSyncFromSheets(
+    summaryData: any[],
+    detailData: any[]
+  ): Promise<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+    batchesProcessed: number;
+  }> {
+    const BATCH_SIZE = 25; // Smaller batches for reliability
+    const MAX_EXECUTION_TIME = 8500; // 8.5 seconds max - leave buffer for response
+    const startTime = Date.now();
+
+    let stats = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: 0,
+      batchesProcessed: 0,
+    };
+
+    try {
+      console.log(`Starting optimized auto sync: ${detailData.length} detail + ${summaryData.length} summary records`);
+
+      // Step 1: Process detail data first (master data NEW BGES B2B & OLO)
+      if (detailData.length > 0) {
+        console.log(`Processing ${detailData.length} detail records...`);
+        const detailRows = detailData as NewBgesB2BOloRow[];
+
+        for (let i = 0; i < detailRows.length; i += BATCH_SIZE) {
+          if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+            console.warn(`Timeout approaching, stopping detail processing at batch ${Math.floor(i / BATCH_SIZE) + 1}`);
+            break;
+          }
+
+          const batch = detailRows.slice(i, i + BATCH_SIZE);
+          stats.batchesProcessed++;
+
+          try {
+            await this.prisma.$transaction(
+              async (tx) => {
+                const operations = batch.map(async (detail) => {
+                  if (!detail.idKendala || !detail.idKendala.trim()) {
+                    stats.skipped++;
+                    return null;
+                  }
+
+                  try {
+                    const result = await tx.newBgesB2BOlo.upsert({
+                      where: { idKendala: detail.idKendala.trim() },
+                      update: {
+                        syncStatus: 'SYNCED',
+                        lastSyncAt: new Date(),
+                        // Update tanggal input jika ada di sheet, format mm/dd/yyyy
+                        tglInputUsulan: detail.tglInputUsulan ?? undefined,
+                        umur: detail.umur ?? null,
+                        bln: detail.bln ?? null,
+                        jenisOrder: detail.jenisOrder ?? null,
+                        datel: detail.datel ?? null,
+                        sto: detail.sto ?? null,
+                        namaPelanggan: detail.namaPelanggan ?? null,
+                        latitude: detail.latitude ?? null,
+                        longitude: detail.longitude ?? null,
+                        jenisKendala: this.validateJenisKendala(detail.jenisKendala),
+                        planTematik: this.validatePlanTematik(detail.planTematik),
+                        rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
+                        ihldValue: detail.ihldValue ?? null,
+                        statusUsulan: this.validateStatusUsulan(detail.statusUsulan),
+                        statusIhld: detail.statusIhld ?? null,
+                        statusInstalasi: this.validateStatusInstalasi(detail.statusInstalasi),
+                        keterangan: this.validateKeterangan(detail.keterangan),
+                      },
+                      create: {
+                        idKendala: detail.idKendala.trim(),
+                        syncStatus: 'SYNCED',
+                        lastSyncAt: new Date(),
+                        // Tanggal input kosong saat create, bisa diedit nanti
+                        tglInputUsulan: detail.tglInputUsulan ?? null,
+                        umur: detail.umur ?? null,
+                        bln: detail.bln ?? null,
+                        jenisOrder: detail.jenisOrder ?? null,
+                        datel: detail.datel ?? null,
+                        sto: detail.sto ?? null,
+                        namaPelanggan: detail.namaPelanggan ?? null,
+                        latitude: detail.latitude ?? null,
+                        longitude: detail.longitude ?? null,
+                        jenisKendala: this.validateJenisKendala(detail.jenisKendala),
+                        planTematik: this.validatePlanTematik(detail.planTematik),
+                        rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
+                        ihldValue: detail.ihldValue ?? null,
+                        statusUsulan: this.validateStatusUsulan(detail.statusUsulan),
+                        statusIhld: detail.statusIhld ?? null,
+                        statusInstalasi: this.validateStatusInstalasi(detail.statusInstalasi),
+                        keterangan: this.validateKeterangan(detail.keterangan),
+                      },
+                    });
+                    stats.created++;
+                    return result;
+                  } catch (error: any) {
+                    if (error.code === 'P2002') {
+                      stats.updated++;
+                    } else {
+                      stats.errors++;
+                    }
+                    return null;
+                  }
+                });
+
+                await Promise.all(operations);
+              },
+              {
+                maxWait: 3000,
+                timeout: 5000,
+              }
+            );
+          } catch (batchError) {
+            console.error(`Error processing detail batch:`, batchError);
+            stats.errors += batch.length;
+          }
+        }
+      }
+
+      // Step 2: Process summary data (NDE USULAN B2B) - LOGIC BARU
+      if (summaryData.length > 0 && Date.now() - startTime < MAX_EXECUTION_TIME) {
+        console.log(`Processing ${summaryData.length} summary records with new logic...`);
+        const summaryRows = summaryData as NdeUsulanB2BRow[];
+
+        for (let i = 0; i < summaryRows.length; i += BATCH_SIZE) {
+          if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+            console.warn(`Timeout approaching, stopping summary processing at batch ${Math.floor(i / BATCH_SIZE) + 1}`);
+            break;
+          }
+
+          const batch = summaryRows.slice(i, i + BATCH_SIZE);
+          stats.batchesProcessed++;
+
+          try {
+            await this.prisma.$transaction(
+              async (tx) => {
+                const operations = batch.map(async (summary) => {
+                  const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
+                  const no = summary.no || (summary as any).NO;
+
+                  if (!no || !nomorNcx || !String(nomorNcx).trim()) {
+                    stats.skipped++;
+                    return null;
+                  }
+
+                  try {
+                    // LOGIC BARU: Cek apakah ada di NEW BGES B2B, jika tidak ada tetap sync
+                    const existingMaster = await tx.newBgesB2BOlo.findUnique({
+                      where: { idKendala: String(nomorNcx).trim() }
+                    });
+
+                    // Jika tidak ada di NEW BGES B2B, buat master data kosong dengan tanggal input null
+                    if (!existingMaster) {
+                      console.log(`Creating missing master data for nomorNcx: ${nomorNcx}`);
+                      await tx.newBgesB2BOlo.create({
+                        data: {
+                          idKendala: String(nomorNcx).trim(),
+                          syncStatus: 'SYNCED',
+                          lastSyncAt: new Date(),
+                          // Tanggal input kosong, bisa diedit nanti dan masuk ke sheet dengan format mm/dd/yyyy
+                          tglInputUsulan: null,
+                          // Field lain kosong, akan diisi dari NDE USULAN B2B
+                          datel: summary.datel ?? null,
+                          sto: summary.sto ?? null,
+                          namaPelanggan: summary.namaPelanggan ?? null,
+                          latitude: summary.latitude ?? null,
+                          longitude: summary.longitude ?? null,
+                          planTematik: this.validatePlanTematik(summary.planTematik),
+                          rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
+                          statusUsulan: this.validateStatusUsulan(summary.statusUsulan),
+                          statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi),
+                        }
+                      });
+                    } else {
+                      // Jika ada, sync status dari NDE USULAN B2B ke NEW BGES B2B
+                      await tx.newBgesB2BOlo.update({
+                        where: { idKendala: String(nomorNcx).trim() },
+                        data: {
+                          syncStatus: 'SYNCED',
+                          lastSyncAt: new Date(),
+                          // Sync status dari NDE USULAN B2B
+                          statusUsulan: this.validateStatusUsulan(summary.statusUsulan) ?? existingMaster.statusUsulan,
+                          statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi) ?? existingMaster.statusInstalasi,
+                          // Update data lain jika kosong di master
+                          datel: existingMaster.datel ?? summary.datel ?? null,
+                          sto: existingMaster.sto ?? summary.sto ?? null,
+                          namaPelanggan: existingMaster.namaPelanggan ?? summary.namaPelanggan ?? null,
+                          latitude: existingMaster.latitude ?? summary.latitude ?? null,
+                          longitude: existingMaster.longitude ?? summary.longitude ?? null,
+                          planTematik: existingMaster.planTematik ?? this.validatePlanTematik(summary.planTematik),
+                          rabHld: existingMaster.rabHld ?? (summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null),
+                        }
+                      });
+                    }
+
+                    // Upsert NDE USULAN B2B dengan relasi ke master data
+                    const result = await tx.ndeUsulanB2B.upsert({
+                      where: { nomorNcx: String(nomorNcx).trim() },
+                      update: {
+                        syncStatus: 'SYNCED',
+                        lastSyncAt: new Date(),
+                        statusJt: this.validateStatusJt(summary.statusJt),
+                        c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
+                        alamatInstalasi: summary.alamatInstalasi ?? null,
+                        jenisLayanan: summary.jenisLayanan ?? null,
+                        nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null,
+                        rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : null,
+                        nomorNde: summary.nomorNde ?? null,
+                        progressJt: summary.progressJt ?? null,
+                        namaOdp: summary.namaOdp ?? null,
+                        jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : null,
+                        keterangan: summary.keterangan ?? null,
+                        datel: summary.datel ?? null,
+                        sto: summary.sto ?? null,
+                        namaPelanggan: summary.namaPelanggan ?? null,
+                        latitude: summary.latitude ?? null,
+                        longitude: summary.longitude ?? null,
+                        ihldLopId: summary.ihldLopId ?? null,
+                        planTematik: summary.planTematik ?? null,
+                        rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
+                        statusUsulan: summary.statusUsulan ?? null,
+                        statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi),
+                      },
+                      create: {
+                        no: no,
+                        nomorNcx: String(nomorNcx).trim(),
+                        syncStatus: 'SYNCED',
+                        lastSyncAt: new Date(),
+                        statusJt: this.validateStatusJt(summary.statusJt),
+                        c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
+                        alamatInstalasi: summary.alamatInstalasi ?? null,
+                        jenisLayanan: summary.jenisLayanan ?? null,
+                        nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null,
+                        rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : null,
+                        nomorNde: summary.nomorNde ?? null,
+                        progressJt: summary.progressJt ?? null,
+                        namaOdp: summary.namaOdp ?? null,
+                        jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : null,
+                        keterangan: summary.keterangan ?? null,
+                        datel: summary.datel ?? null,
+                        sto: summary.sto ?? null,
+                        namaPelanggan: summary.namaPelanggan ?? null,
+                        latitude: summary.latitude ?? null,
+                        longitude: summary.longitude ?? null,
+                        ihldLopId: summary.ihldLopId ?? null,
+                        planTematik: summary.planTematik ?? null,
+                        rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
+                        statusUsulan: summary.statusUsulan ?? null,
+                        statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi),
+                      },
+                    });
+                    stats.created++;
+                    return result;
+                  } catch (error: any) {
+                    if (error.code === 'P2002') {
+                      stats.updated++;
+                    } else {
+                      console.error(`Error processing summary ${nomorNcx}:`, error);
+                      stats.errors++;
+                    }
+                    return null;
+                  }
+                });
+
+                await Promise.all(operations);
+              },
+              {
+                maxWait: 3000,
+                timeout: 5000,
+              }
+            );
+          } catch (batchError) {
+            console.error(`Error processing summary batch:`, batchError);
+            stats.errors += batch.length;
+          }
+        }
+      }
+
+      const totalTime = Date.now() - startTime;
+      console.log(`Optimized auto sync completed in ${totalTime}ms:`, stats);
+
+      return stats;
+    } catch (error) {
+      console.error('Error in optimized auto sync:', error);
+      throw error;
     }
   }
 }

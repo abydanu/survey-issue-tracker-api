@@ -3,7 +3,7 @@ import { UserService } from "../application/user.service.js";
 import ApiResponseHelper from "../../../shared/utils/response.js";
 import logger from "../../../infrastructure/logging/logger.js";
 import type { CreateUserDto, UpdateUserDto } from "../domain/user.entity.js";
-import type { TokenPayload } from "@/modules/auth/domain/auth.entity.js";
+import type { TokenPayload } from "../../../modules/auth/domain/auth.entity.js";
 
 export class UserController {
   constructor(private userService: UserService) {}

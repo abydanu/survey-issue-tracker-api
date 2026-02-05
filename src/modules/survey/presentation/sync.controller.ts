@@ -163,11 +163,39 @@ export class SyncController {
 
   syncFromSheets = async (c: Context) => {
     try {
-      const result = await this.syncService.syncFromSheets();
-      return ApiResponseHelper.success(c, result, result.message);
+      logger.info('Starting optimized sync from Google Sheets...');
+      
+      const startTime = Date.now();
+      const result = await this.syncService.autoSyncFromSheets();
+      const endTime = Date.now();
+      const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
+
+      return ApiResponseHelper.success(c, {
+        ...result,
+        processingTime
+      }, result.message);
     } catch (error: any) {
-      logger.error('Sync from sheets error:', error);
-      return ApiResponseHelper.error(c, 'Failed to sync from Google Sheets');
+      logger.error('Optimized sync error:', error);
+      
+      
+      return ApiResponseHelper.error(c, error.message || 'Sync failed - please try again');
+    }
+  };
+
+  syncEnumsFromSheets = async (c: Context) => {
+    try {
+      const dryRunParam = c.req.query('dryRun');
+      const dryRun =
+        dryRunParam === undefined
+          ? true
+          : ['true', '1', 'yes'].includes(String(dryRunParam).toLowerCase());
+
+      const result = await this.syncService.syncEnumsFromSheets({ dryRun });
+      const message = result.message || (dryRun ? 'Enum sync dry run' : 'Enum sync completed');
+      return ApiResponseHelper.success(c, result, message);
+    } catch (error: any) {
+      logger.error('Sync enums from sheets error:', error);
+      return ApiResponseHelper.error(c, error.message || 'Failed to sync enums from Google Sheets');
     }
   };
 
@@ -178,27 +206,6 @@ export class SyncController {
     } catch (error: any) {
       logger.error('Validate sync data error:', error);
       return ApiResponseHelper.error(c, error.message || 'Failed to validate sync data');
-    }
-  };
-
-  createSurvey = async (c: Context) => {
-    try {
-      const user = c.get('user') as TokenPayload | undefined;
-      const username = user?.name || user?.username || 'User';
-      const body = await c.req.json<CreateSurveyDto>();
-      const created = await this.adminService.createSurvey(body);
-      return ApiResponseHelper.success(
-        c,
-        serializeBigInt(created),
-        `${username} successfully created survey`,
-        201
-      );
-    } catch (error: any) {
-      logger.error('Create survey error:', error);
-      if (error.message?.includes('already exists') || error.message?.includes('sudah ada')) {
-        return ApiResponseHelper.error(c, 'Survey with this data already exists', 400);
-      }
-      return ApiResponseHelper.error(c, 'Failed to create survey');
     }
   };
 
@@ -239,6 +246,32 @@ export class SyncController {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
       return ApiResponseHelper.error(c, 'Failed to delete survey');
+    }
+  };
+
+  updateTanggalInput = async (c: Context) => {
+    try {
+      const user = c.get('user') as TokenPayload | undefined;
+      const username = user?.name || user?.username || 'User';
+      const idKendala = c.req.param('idKendala');
+      const body = await c.req.json<{ tanggalInput: string }>();
+      
+      await this.adminService.updateTanggalInput(idKendala, body.tanggalInput);
+      
+      return ApiResponseHelper.success(
+        c,
+        null,
+        `${username} successfully updated tanggal input for ${idKendala}`
+      );
+    } catch (error: any) {
+      logger.error('Update tanggal input error:', error);
+      if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
+        return ApiResponseHelper.notFound(c, 'Master data not found');
+      }
+      if (error.message?.includes('Format tanggal')) {
+        return ApiResponseHelper.error(c, error.message, 400);
+      }
+      return ApiResponseHelper.error(c, 'Failed to update tanggal input');
     }
   };
 }

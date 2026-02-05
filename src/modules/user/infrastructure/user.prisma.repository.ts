@@ -4,7 +4,7 @@ import type { IUserRepository } from '../domain/user.repository.js';
 import type { User, CreateUserDto, UpdateUserDto } from '../domain/user.entity.js';
 import bcrypt from 'bcryptjs';
 import type { UserQuery } from '../domain/user.query.js';
-import logger from '@/infrastructure/logging/logger.js';
+import logger from '../../../infrastructure/logging/logger.js';
 
 export class UserPrismaRepository implements IUserRepository {
   async findAll(query: UserQuery): Promise<{ data: User[]; total: number }> {
@@ -16,6 +16,7 @@ export class UserPrismaRepository implements IUserRepository {
       OR: [
         { username: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
         { name: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
+        { email: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
       ],
     }
     : undefined;
@@ -49,12 +50,20 @@ export class UserPrismaRepository implements IUserRepository {
     return user as User | null;
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+    return user as User | null;
+  }
+
   async create(data: CreateUserDto): Promise<User> {
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     const user = await prisma.user.create({
       data: {
         username: data.username,
+        email: data.email || null,
         password: hashedPassword,
         name: data.name,
         role: data.role || 'USER',
@@ -67,6 +76,7 @@ export class UserPrismaRepository implements IUserRepository {
     const updateData: any = {};
   
     if (data.username) updateData.username = data.username;
+    if (data.email !== undefined) updateData.email = data.email || null;
     if (data.name) updateData.name = data.name;
     if (data.role) updateData.role = data.role;
     

@@ -1,71 +1,20 @@
 import { z } from '../../../shared/utils/zod.js';
 import { createRoute } from '@hono/zod-openapi';
 import { safeNumberTransform } from '../../../shared/utils/number.js';
+import {
+  JenisKendala,
+  Keterangan,
+  PlanTematik,
+  StatusInstalasi,
+  StatusJt,
+  StatusUsulan,
+} from '../../../generated/prisma/client.js';
 
-const JenisKendalaEnum = z.enum([
-  'ODP_FULL',
-  'JARAK_PT1_250',
-  'BLANK_FO',
-  'JARAK_JAUH_500',
-  'BLANK_TIANG',
-  'NEED_MATAM_3PCS',
-]);
-
-const PlanTematikEnum = z.enum(['PT1', 'PT2S', 'PT2NS', 'PT3', 'PT4', 'TKAP']);
-
-const StatusUsulanEnum = z.enum([
-  'REVIEW_SDI',
-  'BELUM_INPUT',
-  'REVIEW_OPTIMA',
-  'REVIEW_ED',
-  'CEK_SDI_REGIONAL',
-  'APPROVED',
-  'DROP_LOP',
-  'KONFIRMASI_ULANG',
-  'NOT_APPROVED',
-  'PENDING',
-  'CANCEL',
-  'OGP_IHLD',
-  'WAITING_CARING',
-]);
-
-const ProjectStatusEnum = z.enum([
-  'REVIEW',
-  'SURVEY',
-  'INSTALASI',
-  'DONE_INSTALASI',
-  'GO_LIVE',
-  'CANCEL',
-  'PENDING',
-  'KENDALA',
-  'WAITING_BUDGET',
-  'DROP',
-  'WAITING_PROJECT_JPP',
-  'WAITING_CB',
-]);
-
-const ProjectIssueEnum = z.enum([
-  'PELANGGAN_BATAL',
-  'PT1_ONLY',
-  'PERIJINAN',
-  'AKI_TIDAK_LAYAK',
-  'REDESIGN',
-  'INDIKASI_RESELLER',
-  'FEEDER_HABIS',
-  'KENDALA_IZIN_TANAM_TN',
-  'PORT_OLT_HABIS',
-  'MATTAM_TIANG',
-  'DISTRIBUSI_HABIS',
-  'MENUNGGU_M_OLT',
-  'MENUNGGU_RELOKASI_TIANG_PLN',
-  'CORE_DISTRIBUSI_CACAT',
-  'MENUNGGU_CO_FEEDER',
-  'PORT_EA_HABIS',
-  'INVALID_LOCATION',
-  'HOLD_BY_BGES',
-  'WAITING_REVIT_ODP',
-  'HOLD_BY_PED',
-]);
+const JenisKendalaEnum = z.nativeEnum(JenisKendala);
+const PlanTematikEnum = z.nativeEnum(PlanTematik);
+const StatusUsulanEnum = z.nativeEnum(StatusUsulan);
+const ProjectStatusEnum = z.nativeEnum(StatusInstalasi);
+const ProjectIssueEnum = z.nativeEnum(Keterangan);
 
 const SurveySchema = z.object({
   id: z.string().optional(),
@@ -91,7 +40,7 @@ const SurveySchema = z.object({
   keterangan: ProjectIssueEnum.nullable().optional(),
   newSc: z.string().nullable().optional(),
 
-  statusJt: z.string().nullable().optional(),
+  statusJt: z.nativeEnum(StatusJt).nullable().optional(),
   c2r: z.number().nullable().optional(),
   nomorNcx: z.string().nullable().optional(),
   alamat: z.string().nullable().optional(),
@@ -118,7 +67,7 @@ const SurveySchema = z.object({
 const AdminEditableSurveyBaseSchema = z.object({
   no: z.string(),
 
-  statusJt: z.string().nullable().optional(),
+  statusJt: z.nativeEnum(StatusJt).nullable().optional(),
   c2r: z.number().nullable().optional(),
   alamat: z.string().nullable().optional(),
   jenisLayanan: z.string().nullable().optional(),
@@ -133,10 +82,9 @@ const AdminEditableSurveyBaseSchema = z.object({
     .optional()
     .transform((val) => (val === null || val === undefined || val === '' ? null : Number(val))),
   keteranganText: z.string().nullable().optional(),
-});
-
-export const CreateSurveyRequestSchema = AdminEditableSurveyBaseSchema.extend({
-  nomorNcx: z.string().optional(), 
+  
+  statusUsulan: StatusUsulanEnum.nullable().optional(),
+  statusInstalasi: ProjectStatusEnum.nullable().optional(),
 });
 
 export const UpdateSurveyRequestSchema = AdminEditableSurveyBaseSchema.omit({ 
@@ -170,6 +118,24 @@ export const ApiErrorResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   errors: z.any().optional(),
+});
+
+const EnumSyncChangeSchema = z.object({
+  enumName: z.string(),
+  sheetValues: z.array(z.string()),
+  dbValues: z.array(z.string()),
+  schemaValues: z.array(z.string()),
+  toAddDb: z.array(z.string()),
+  toAddSchema: z.array(z.string()),
+});
+
+export const EnumSyncResponseSchema = z.object({
+  dryRun: z.boolean(),
+  schemaUpdated: z.boolean(),
+  dbUpdated: z.boolean(),
+  prismaGenerated: z.boolean(),
+  message: z.string(),
+  changes: z.array(EnumSyncChangeSchema),
 });
 
 export const getSurveyRoute = createRoute({
@@ -430,15 +396,32 @@ export const syncFromSheetsRoute = createRoute({
   method: 'post',
   path: '/',
   tags: ['Sync'],
-  summary: 'Sync from Google Sheets',
-  description: 'Sinkronisasi data dari Google Sheets ke Database (Admin only)',
+  summary: 'Auto Sync from Google Sheets',
+  description: 'Sinkronisasi otomatis semua data dari Google Sheets dengan batch processing internal (Admin only)',
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
       description: 'Sinkronisasi berhasil',
       content: {
         'application/json': {
-          schema: ApiSuccessResponseSchema,
+          schema: ApiSuccessResponseSchema.extend({
+            data: z.object({
+              totalRecords: z.number(),
+              processedRecords: z.number(),
+              syncStats: z.object({
+                created: z.number(),
+                updated: z.number(),
+                skipped: z.number(),
+                errors: z.number(),
+              }),
+              enumSync: z.object({
+                processed: z.boolean(),
+                newEnums: z.array(z.string()),
+              }),
+              processingTime: z.string(),
+              batchesProcessed: z.number(),
+            }),
+          }),
         },
       },
     },
@@ -453,38 +436,33 @@ export const syncFromSheetsRoute = createRoute({
   },
 });
 
-export const createSurveyRoute = createRoute({
+export const syncEnumsRoute = createRoute({
   method: 'post',
-  path: '/survey',
-  tags: ['Survey'],
-  summary: 'Create survey (Admin only)',
-  description: 'Membuat data survey baru',
+  path: '/enums/sync',
+  tags: ['Sync'],
+  summary: 'Sync enum values from Google Sheets dropdown',
+  description: 'Membaca nilai dropdown dari Google Sheets, lalu menambahkan value baru ke Postgres enum dan Prisma schema. Default dryRun=true, set dryRun=false untuk apply.',
   security: [{ bearerAuth: [] }],
   request: {
-    body: {
-      content: {
-        'application/json': {
-          schema: CreateSurveyRequestSchema,
-        },
-      },
-    },
+    query: z.object({
+      dryRun: z
+        .string()
+        .optional()
+        .openapi({
+          param: { name: 'dryRun', in: 'query' },
+          example: 'false',
+          description: 'Gunakan "false" untuk langsung apply perubahan. Default true (hanya preview).',
+        }),
+    }),
   },
   responses: {
-    201: {
-      description: 'Survey berhasil dibuat',
+    200: {
+      description: 'Enum sync berhasil (atau dry run)',
       content: {
         'application/json': {
           schema: ApiSuccessResponseSchema.extend({
-            data: SurveyResponseSchema,
+            data: EnumSyncResponseSchema,
           }),
-        },
-      },
-    },
-    400: {
-      description: 'Data sudah ada atau invalid',
-      content: {
-        'application/json': {
-          schema: ApiErrorResponseSchema,
         },
       },
     },
@@ -531,6 +509,66 @@ export const updateSurveyRoute = createRoute({
     },
     404: {
       description: 'Data tidak ditemukan',
+      content: {
+        'application/json': {
+          schema: ApiErrorResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: 'Unauthorized',
+      content: {
+        'application/json': {
+          schema: ApiErrorResponseSchema,
+        },
+      },
+    },
+  },
+});
+
+export const updateTanggalInputRoute = createRoute({
+  method: 'put',
+  path: '{idKendala}/tanggal',
+  tags: ['Survey'],
+  summary: 'Update tanggal input di NEW BGES B2B (Admin only)',
+  description: 'Update tanggal input usulan di master data NEW BGES B2B dengan format mm/dd/yyyy',
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({
+      idKendala: z.string().openapi({ example: 'NCX123' }),
+    }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            tanggalInput: z.string().openapi({ 
+              example: '02/05/2026',
+              description: 'Tanggal input dengan format mm/dd/yyyy'
+            }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Tanggal input berhasil diupdate',
+      content: {
+        'application/json': {
+          schema: ApiSuccessResponseSchema,
+        },
+      },
+    },
+    400: {
+      description: 'Format tanggal tidak valid',
+      content: {
+        'application/json': {
+          schema: ApiErrorResponseSchema,
+        },
+      },
+    },
+    404: {
+      description: 'Master data tidak ditemukan',
       content: {
         'application/json': {
           schema: ApiErrorResponseSchema,

@@ -4,6 +4,7 @@ import { createRoute } from '@hono/zod-openapi';
 export const UserResponseSchema = z.object({
   id: z.string().openapi({ example: 'cmktbcxhz00010yggdaqo685v' }),
   username: z.string().openapi({ example: 'johndoe' }),
+  email: z.string().email().nullable().openapi({ example: 'john@example.com' }),
   name: z.string().openapi({ example: 'John Doe' }),
   role: z.enum(['ADMIN', 'USER']).openapi({ example: 'USER' }),
   createdAt: z.string().openapi({ example: '2024-01-01T00:00:00.000Z' }),
@@ -14,6 +15,10 @@ export const CreateUserRequestSchema = z.object({
   username: z.string().min(3).max(50).openapi({
     example: 'johndoe',
     description: 'Username minimal 3 karakter, maksimal 50 karakter'
+  }),
+  email: z.string().email().optional().openapi({
+    example: 'john@example.com',
+    description: 'Email address (optional)'
   }),
   password: z.string().min(3).openapi({
     example: 'password123',
@@ -33,6 +38,10 @@ export const UpdateUserRequestSchema = z.object({
   username: z.string().min(3).max(50).optional().openapi({
     example: 'johndoe',
     description: 'Username minimal 3 karakter, maksimal 50 karakter'
+  }),
+  email: z.string().email().optional().openapi({
+    example: 'john.updated@example.com',
+    description: 'Email address (optional)'
   }),
   oldPassword: z.string().min(3).optional().openapi({
     example: 'old123',
@@ -115,7 +124,7 @@ export const getUsersRoute = createRoute({
           in: 'query',
         },
         example: 'john',
-        description: 'Kata kunci untuk mencari user berdasarkan username atau name',
+        description: 'Kata kunci untuk mencari user berdasarkan username, name, atau email',
       }),
     }),
   },
