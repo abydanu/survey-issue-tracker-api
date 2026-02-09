@@ -1,4 +1,7 @@
-FROM oven/bun:1.1.29-node22
+FROM node:22-alpine
+
+# install bun
+RUN npm install -g bun
 
 WORKDIR /app
 
