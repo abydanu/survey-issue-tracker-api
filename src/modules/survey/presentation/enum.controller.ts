@@ -20,4 +20,19 @@ export class EnumController {
       return ApiResponseHelper.error(c, error.message || 'Failed to fetch filter enums');
     }
   };
+
+  getAllEnums = async (c: Context) => {
+    try {
+      const enums = await this.enumService.getAllEnums();
+      
+      return ApiResponseHelper.success(
+        c,
+        enums,
+        'Successfully fetched all enums with IDs'
+      );
+    } catch (error: any) {
+      logger.error('Get all enums error:', error);
+      return ApiResponseHelper.error(c, error.message || 'Failed to fetch all enums');
+    }
+  };
 }

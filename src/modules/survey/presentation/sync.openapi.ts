@@ -1,20 +1,6 @@
 import { z } from '../../../shared/utils/zod.js';
 import { createRoute } from '@hono/zod-openapi';
 import { safeNumberTransform } from '../../../shared/utils/number.js';
-import {
-  JenisKendala,
-  Keterangan,
-  PlanTematik,
-  StatusInstalasi,
-  StatusJt,
-  StatusUsulan,
-} from '../../../generated/prisma/client.js';
-
-const JenisKendalaEnum = z.nativeEnum(JenisKendala);
-const PlanTematikEnum = z.nativeEnum(PlanTematik);
-const StatusUsulanEnum = z.nativeEnum(StatusUsulan);
-const ProjectStatusEnum = z.nativeEnum(StatusInstalasi);
-const ProjectIssueEnum = z.nativeEnum(Keterangan);
 
 const SurveySchema = z.object({
   id: z.string().optional(),
@@ -29,25 +15,25 @@ const SurveySchema = z.object({
   namaPelanggan: z.string().nullable().optional(),
   latitude: z.string().nullable().optional(),
   longitude: z.string().nullable().optional(),
-  jenisKendala: JenisKendalaEnum.nullable().optional(),
-  pltTemuan: PlanTematikEnum.nullable().optional(),
+  jenisKendala: z.string().nullable().optional(),
+  pltTemuan: z.string().nullable().optional(),
   rabHldSummary: z.number().nullable().optional(),
   ihld: z.number().nullable().optional(),
-  statusUsulan: StatusUsulanEnum.nullable().optional(),
+  statusUsulan: z.string().nullable().optional(),
   statusIhld: z.string().nullable().optional(),
   idEprop: z.string().nullable().optional(),
-  statusInstalasi: ProjectStatusEnum.nullable().optional(),
-  keterangan: ProjectIssueEnum.nullable().optional(),
+  statusInstalasi: z.string().nullable().optional(),
+  keterangan: z.string().nullable().optional(),
   newSc: z.string().nullable().optional(),
 
-  statusJt: z.nativeEnum(StatusJt).nullable().optional(),
+  statusJt: z.string().nullable().optional(),
   c2r: z.number().nullable().optional(),
   nomorNcx: z.string().nullable().optional(),
   alamat: z.string().nullable().optional(),
   jenisLayanan: z.string().nullable().optional(),
   nilaiKontrak: z.string().nullable().optional().transform((val) => (val ? BigInt(val) : null)),
   ihldLop: z.number().nullable().optional(),
-  planTematik: PlanTematikEnum.nullable().optional(),
+  planTematik: z.string().nullable().optional(),
   rabHldDetail: z.string().nullable().optional().transform((val) => (val ? BigInt(val) : null)),
   rabSurvey: z.string().nullable().optional().transform((val) => (val ? BigInt(val) : null)),
   noNde: z.string().nullable().optional(),
@@ -67,7 +53,7 @@ const SurveySchema = z.object({
 const AdminEditableSurveyBaseSchema = z.object({
   no: z.string(),
 
-  statusJt: z.nativeEnum(StatusJt).nullable().optional(),
+  statusJt: z.string().nullable().optional(),
   c2r: z.number().nullable().optional(),
   alamat: z.string().nullable().optional(),
   jenisLayanan: z.string().nullable().optional(),
@@ -83,8 +69,8 @@ const AdminEditableSurveyBaseSchema = z.object({
     .transform((val) => (val === null || val === undefined || val === '' ? null : Number(val))),
   keteranganText: z.string().nullable().optional(),
   
-  statusUsulan: StatusUsulanEnum.nullable().optional(),
-  statusInstalasi: ProjectStatusEnum.nullable().optional(),
+  statusUsulan: z.string().nullable().optional(),
+  statusInstalasi: z.string().nullable().optional(),
 });
 
 export const UpdateSurveyRequestSchema = AdminEditableSurveyBaseSchema.omit({ 

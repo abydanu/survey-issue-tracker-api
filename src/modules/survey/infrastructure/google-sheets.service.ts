@@ -7,14 +7,6 @@ import type {
   NdeUsulanB2BRow,
   NewBgesB2BOloRow,
 } from "../domain/sync.entity.js";
-import {
-  JenisKendala,
-  Keterangan,
-  PlanTematik,
-  StatusInstalasi,
-  StatusJt,
-  StatusUsulan,
-} from "../../../generated/prisma/client.js";
 import fs from "fs";
 
 function loadGoogleCredentials(): Record<string, unknown> {
@@ -59,14 +51,6 @@ export class GoogleSheetsService {
   private detailSheetName: string;
   private summarySheetId: number | null = null;
   private detailSheetId: number | null = null;
-  private enumSets = {
-    StatusJt: new Set(Object.values(StatusJt)),
-    JenisKendala: new Set(Object.values(JenisKendala)),
-    PlanTematik: new Set(Object.values(PlanTematik)),
-    StatusUsulan: new Set(Object.values(StatusUsulan)),
-    StatusInstalasi: new Set(Object.values(StatusInstalasi)),
-    Keterangan: new Set(Object.values(Keterangan)),
-  };
 
   constructor() {
     const credentials = loadGoogleCredentials();
@@ -97,6 +81,10 @@ export class GoogleSheetsService {
 
     const sheets = spreadsheet.data.sheets || [];
     const titles = sheets.map((s: any) => s.properties?.title).filter(Boolean);
+
+    logger.info(`[DEBUG] Available sheets in spreadsheet: ${titles.join(", ")}`);
+    logger.info(`[DEBUG] Looking for summary sheet: "${this.summarySheetName}"`);
+    logger.info(`[DEBUG] Looking for detail sheet: "${this.detailSheetName}"`);
 
     const summarySheet = sheets.find(
       (s: any) => s.properties?.title === this.summarySheetName
@@ -137,6 +125,9 @@ export class GoogleSheetsService {
     this.detailSheetName = resolvedDetail.properties.title;
     this.summarySheetId = Number(resolvedSummary.properties.sheetId);
     this.detailSheetId = Number(resolvedDetail.properties.sheetId);
+    
+    logger.info(`[DEBUG] Resolved summary sheet: "${this.summarySheetName}" (ID: ${this.summarySheetId})`);
+    logger.info(`[DEBUG] Resolved detail sheet: "${this.detailSheetName}" (ID: ${this.detailSheetId})`);
   }
 
   async readSummaryData(): Promise<SurveySummarySheetRow[]> {
@@ -231,10 +222,13 @@ export class GoogleSheetsService {
       const dataRows = rows.slice(2);
 
       return dataRows
-
+        // PERBAIKAN: Filter baris yang benar-benar punya data (idKendala tidak kosong)
         .filter(
           (row: any[]) =>
-            Array.isArray(row) && row.some((c) => String(c ?? "").trim() !== "")
+            Array.isArray(row) && 
+            row[4] && // Column E (index 4) = idKendala harus ada
+            String(row[4]).trim() !== "" &&
+            String(row[4]).trim() !== "-"
         )
         .map((row: any[], index: number) =>
           this.mapRowToDetail(row, index + 3)
@@ -342,17 +336,29 @@ export class GoogleSheetsService {
   private async findDetailRowIndex(idKendala: string): Promise<number | null> {
     try {
       await this.ensureSheetConfigLoaded();
+      logger.info(`[DEBUG] Searching for idKendala ${idKendala} in sheet: "${this.detailSheetName}"`);
+      logger.info(`[DEBUG] Using range: ${this.detailSheetName}!E:E`);
+      
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
         range: `${this.detailSheetName}!E:E`,
       });
 
       const rows = response.data.values || [];
+      logger.info(`[DEBUG] Found ${rows.length} total rows in column E`);
+      
       const dataRows = rows.length < 3 ? [] : rows.slice(2);
       const k = String(idKendala).trim();
       const idx = dataRows.findIndex(
         (row: any[]) => String(row[0] ?? "").trim() === k
       );
+      
+      if (idx >= 0) {
+        logger.info(`[DEBUG] Found idKendala at index ${idx}, row number: ${idx + 3}`);
+      } else {
+        logger.info(`[DEBUG] idKendala ${idKendala} not found in sheet "${this.detailSheetName}"`);
+      }
+      
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
       logger.error("Error finding detail row index:", error);
@@ -459,6 +465,10 @@ export class GoogleSheetsService {
   async updateDetailRow(data: Partial<NewBgesB2BOloRow>): Promise<boolean> {
     try {
       await this.ensureSheetConfigLoaded();
+      logger.info(`[DEBUG] updateDetailRow called for idKendala: ${data.idKendala}`);
+      logger.info(`[DEBUG] Target sheet name: "${this.detailSheetName}"`);
+      logger.info(`[DEBUG] Target sheet ID: ${this.detailSheetId}`);
+      
       if (!data.idKendala) {
         throw new Error('Field "idKendala" diperlukan untuk update');
       }
@@ -466,21 +476,52 @@ export class GoogleSheetsService {
       const rowIndex = await this.findDetailRowIndex(data.idKendala);
       
       if (!rowIndex) {
-        
-        logger.info(`Row not found for idKendala ${data.idKendala}, creating new row...`);
-        return await this.appendDetailRow(data as NewBgesB2BOloRow);
+        logger.warn(`Row not found for idKendala ${data.idKendala} in detail sheet. Skipping update to avoid corruption.`);
+        return false;
       }
 
+      // First, read the existing row to verify we're targeting the correct row
+      const verifyRange = `'${this.detailSheetName}'!E${rowIndex}`;
+      logger.info(`[DEBUG] Verifying row by reading: ${verifyRange}`);
       
-      const row = this.mapDetailToRow(data);
+      const verifyResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: verifyRange,
+      });
+      
+      const verifyValue = verifyResponse.data.values?.[0]?.[0];
+      logger.info(`[DEBUG] Verification - Expected idKendala: ${data.idKendala}, Found: ${verifyValue}`);
+      
+      if (String(verifyValue).trim() !== String(data.idKendala).trim()) {
+        logger.error(`[ERROR] Row verification failed! Expected ${data.idKendala} but found ${verifyValue}. Aborting update to prevent corruption.`);
+        return false;
+      }
+
+      const fullRow = this.mapDetailToRow(data);
+      // Skip first element (column A) to preserve row numbers
+      const rowDataToUpdate = fullRow.slice(1);
+      
+      const updateRange = `'${this.detailSheetName}'!B${rowIndex}:U${rowIndex}`;
+      logger.info(`[DEBUG] Updating range: ${updateRange}`);
+      
+      // Use values.update API with explicit range including sheet name in quotes
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.detailSheetName}!A${rowIndex}:U${rowIndex}`,
+        range: updateRange,
         valueInputOption: "USER_ENTERED",
         requestBody: {
-          values: [row],
+          values: [rowDataToUpdate],
         },
       });
+
+      // Verify the update was successful
+      const postVerifyResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: verifyRange,
+      });
+      
+      const postVerifyValue = postVerifyResponse.data.values?.[0]?.[0];
+      logger.info(`[DEBUG] Post-update verification - idKendala still: ${postVerifyValue}`);
 
       logger.info(
         `Updated detail row ${rowIndex} for idKendala: ${data.idKendala}`
@@ -722,23 +763,43 @@ export class GoogleSheetsService {
     let tglInputUsulan: Date | null = null;
     if (row[3]) {
       const dateStr = String(row[3]).trim();
-      if (dateStr) {
-        if (dateStr.includes("/")) {
-          const parts = dateStr.split("/");
-          if (parts.length === 3) {
-            const month = parts[0] ? parseInt(parts[0]) : 1;
-            const day = parts[1] ? parseInt(parts[1]) : 1;
-            const year = parts[2]
-              ? parseInt(parts[2])
-              : new Date().getFullYear();
-            tglInputUsulan = new Date(year, month - 1, day);
+      if (dateStr && dateStr !== '-' && dateStr !== '') {
+        try {
+          if (dateStr.includes("/")) {
+            const parts = dateStr.split("/");
+            if (parts.length === 3) {
+              const month = parts[0] ? parseInt(parts[0], 10) : 1;
+              const day = parts[1] ? parseInt(parts[1], 10) : 1;
+              let year = parts[2] ? parseInt(parts[2], 10) : new Date().getFullYear();
+              
+              // Handle 2-digit year (e.g., 24 -> 2024)
+              if (year < 100) {
+                year += year < 50 ? 2000 : 1900;
+              }
+              
+              // PERBAIKAN: Parse sebagai UTC untuk menghindari timezone shift
+              // Format: YYYY-MM-DD akan di-parse sebagai UTC midnight
+              const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+              tglInputUsulan = new Date(isoDateStr);
+              
+              // Validate the date is reasonable
+              if (isNaN(tglInputUsulan.getTime()) || year < 2000 || year > 2100) {
+                console.warn(`Invalid date parsed from "${dateStr}" at row ${rowNumber}: ${tglInputUsulan}`);
+                tglInputUsulan = null;
+              }
+            } else {
+              tglInputUsulan = new Date(dateStr);
+              if (isNaN(tglInputUsulan.getTime())) tglInputUsulan = null;
+            }
           } else {
+            // Try parsing as ISO date or other format
             tglInputUsulan = new Date(dateStr);
+            if (isNaN(tglInputUsulan.getTime())) tglInputUsulan = null;
           }
-        } else {
-          tglInputUsulan = new Date(dateStr);
+        } catch (error) {
+          console.warn(`Failed to parse date "${dateStr}" at row ${rowNumber}:`, error);
+          tglInputUsulan = null;
         }
-        if (isNaN(tglInputUsulan.getTime())) tglInputUsulan = null;
       }
     }
 
@@ -838,13 +899,22 @@ export class GoogleSheetsService {
   }
 
   private mapDetailToRow(data: Partial<NewBgesB2BOloRow>): any[] {
+    // Helper to format date as m/d/yyyy without timezone shift
+    const formatDate = (date: Date | null | undefined): string => {
+      if (!date) return "";
+      const d = new Date(date);
+      // Use UTC components to avoid timezone shift
+      const month = d.getUTCMonth() + 1;
+      const day = d.getUTCDate();
+      const year = d.getUTCFullYear();
+      return `${month}/${day}/${year}`;
+    };
+    
     return [
       "",
       data.umur?.toString() || "",
       data.bln || "",
-      data.tglInputUsulan
-        ? new Date(data.tglInputUsulan).toLocaleDateString('en-US')
-        : "",
+      formatDate(data.tglInputUsulan),
       data.idKendala || "",
       data.jenisOrder || "",
       data.datel || "",

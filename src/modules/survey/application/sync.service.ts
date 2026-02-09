@@ -7,11 +7,11 @@ import type {
   SurveyDetailSheetRow,
 } from "../domain/sync.entity.js";
 import { SyncValidationHelper } from "../../../shared/utils/sync-validation.js";
-import { EnumSyncService } from "./enum-sync.service.js";
+import { EnumValueService } from "./enum-value.service.js";
 
 export class SyncService {
   private _googleSheets: GoogleSheetsService | null = null;
-  private _enumSyncService: EnumSyncService | null = null;
+  private _enumValueService: EnumValueService | null = null;
 
   constructor(private syncRepo: ISyncRepository) { }
 
@@ -22,11 +22,11 @@ export class SyncService {
     return this._googleSheets;
   }
 
-  private getEnumSyncService(): EnumSyncService {
-    if (!this._enumSyncService) {
-      this._enumSyncService = new EnumSyncService(this.getGoogleSheets());
+  private getEnumValueService(): EnumValueService {
+    if (!this._enumValueService) {
+      this._enumValueService = new EnumValueService(this.getGoogleSheets());
     }
-    return this._enumSyncService;
+    return this._enumValueService;
   }
 
   async syncFromSheets(): Promise<{ success: boolean; message: string }> {
@@ -129,6 +129,83 @@ export class SyncService {
     }
   }
 
+  async syncBatch(batchNumber: number, batchSize: number): Promise<{
+    processedInBatch: number;
+    totalProcessed: number;
+    totalRecords: number;
+    remaining: number;
+    completed: boolean;
+    stats: {
+      created: number;
+      updated: number;
+      skipped: number;
+      errors: number;
+    };
+  }> {
+    try {
+      logger.info(`Starting batch ${batchNumber} with size ${batchSize}...`);
+
+      // Fetch all data once (cached in memory for this request)
+      const summaryData = await this.getGoogleSheets().readSummaryData();
+      const detailData = await this.getGoogleSheets().readDetailData();
+
+      const totalRecords = summaryData.length + detailData.length;
+      
+      // Calculate batch range
+      const startIndex = batchNumber * batchSize;
+      const endIndex = Math.min(startIndex + batchSize, totalRecords);
+      
+      // Check if completed
+      if (startIndex >= totalRecords) {
+        return {
+          processedInBatch: 0,
+          totalProcessed: totalRecords,
+          totalRecords,
+          remaining: 0,
+          completed: true,
+          stats: { created: 0, updated: 0, skipped: 0, errors: 0 }
+        };
+      }
+
+      // Split data into detail and summary for this batch
+      const detailBatchSize = Math.min(detailData.length - startIndex, batchSize);
+      const summaryStartIndex = Math.max(0, startIndex - detailData.length);
+      const summaryBatchSize = Math.max(0, Math.min(endIndex - detailData.length, summaryData.length) - summaryStartIndex);
+
+      const detailBatch = detailBatchSize > 0 
+        ? detailData.slice(startIndex, startIndex + detailBatchSize)
+        : [];
+      
+      const summaryBatch = summaryBatchSize > 0
+        ? summaryData.slice(summaryStartIndex, summaryStartIndex + summaryBatchSize)
+        : [];
+
+      logger.info(`Processing batch ${batchNumber}: ${detailBatch.length} detail + ${summaryBatch.length} summary records`);
+
+      // Process batch
+      const stats = await this.syncRepo.autoSyncFromSheets(summaryBatch, detailBatch);
+
+      const processedInBatch = detailBatch.length + summaryBatch.length;
+      const totalProcessed = endIndex;
+      const remaining = totalRecords - totalProcessed;
+      const completed = remaining === 0;
+
+      logger.info(`Batch ${batchNumber} completed: ${processedInBatch} processed, ${remaining} remaining`);
+
+      return {
+        processedInBatch,
+        totalProcessed,
+        totalRecords,
+        remaining,
+        completed,
+        stats
+      };
+    } catch (error: any) {
+      logger.error(`Error in batch ${batchNumber}:`, error);
+      throw new Error(`Batch sync failed: ${error.message}`);
+    }
+  }
+
   async autoSyncFromSheets(): Promise<{
     success: boolean;
     message: string;
@@ -158,8 +235,26 @@ export class SyncService {
 
       const totalRecords = summaryData.length + detailData.length;
 
+      // Step 2: Auto sync enums first (detect new enums from sheets)
+      logger.info("Auto-syncing enums from Google Sheets...");
+      let enumSyncResult = {
+        processed: false,
+        newEnums: [] as string[],
+      };
 
-      logger.info("Starting optimized batch processing...");
+      try {
+        const enumResult = await this.getEnumValueService().syncEnumsFromSheets();
+        enumSyncResult = {
+          processed: true,
+          newEnums: enumResult.newEnums.map(e => `${e.enumType}.${e.value}`),
+        };
+        logger.info(`Enum sync completed: ${enumSyncResult.newEnums.length} new enums added`);
+      } catch (enumError: any) {
+        logger.warn(`Enum sync failed (non-blocking): ${enumError.message}`);
+        // Continue with data sync even if enum sync fails
+      }
+
+      // Step 3: Optimized batch processing with timeout management
       const syncStats = await this.syncRepo.autoSyncFromSheets(
         summaryData,
         detailData
@@ -181,10 +276,7 @@ export class SyncService {
         totalRecords,
         processedRecords: syncStats.created + syncStats.updated + syncStats.skipped,
         syncStats,
-        enumSync: {
-          processed: false,
-          newEnums: [],
-        },
+        enumSync: enumSyncResult,
         batchesProcessed: syncStats.batchesProcessed || 0,
       };
     } catch (error: any) {
@@ -201,7 +293,7 @@ export class SyncService {
       { dryRun },
       "Starting enum sync from Google Sheets dropdown values"
     );
-    return this.getEnumSyncService().syncEnums({ dryRun });
+    return this.getEnumValueService().syncEnumsFromSheets();
   }
 
   async syncToSheets(

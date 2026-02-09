@@ -48,7 +48,7 @@ model Session {
 model PasswordResetOtp {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
-  otp       String   
+  otp       String
   expiresAt DateTime @map("expires_at")
   used      Boolean  @default(false)
   attempts  Int      @default(0) @map("attempts")
@@ -71,6 +71,30 @@ model SyncLog {
   updatedAt DateTime @updatedAt
 
   @@map("sync_logs")
+}
+
+model EnumValue {
+  id          String   @id @default(cuid())
+  enumType    String   @map("enum_type")
+  value       String
+  displayName String?  @map("display_name")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  jenisKendalaRecords    NewBgesB2BOlo[] @relation("JenisKendala")
+  planTematikRecords     NewBgesB2BOlo[] @relation("PlanTematik")
+  statusUsulanRecords    NewBgesB2BOlo[] @relation("StatusUsulan")
+  statusInstalasiRecords NewBgesB2BOlo[] @relation("StatusInstalasi")
+  keteranganRecords      NewBgesB2BOlo[] @relation("Keterangan")
+
+  statusJtRecords           NdeUsulanB2B[] @relation("StatusJt")
+  statusInstalasiNdeRecords NdeUsulanB2B[] @relation("StatusInstalasiNde")
+
+  @@unique([enumType, value])
+  @@index([enumType])
+  @@index([isActive])
+  @@map("enum_values")
 }
 
 enum Status {
@@ -99,18 +123,18 @@ model NewBgesB2BOlo {
   latitude      String?
   longitude     String?
 
-  jenisKendala JenisKendala? @map("jenis_kendala")
-  planTematik  PlanTematik?  @map("plan_tematik")
+  jenisKendalaId String? @map("jenis_kendala_id")
+  planTematikId  String? @map("plan_tematik_id")
 
   rabHld    Decimal? @map("rab_hld") @db.Decimal(15, 0)
   ihldValue BigInt?  @map("ihld_value") @db.BigInt
 
-  statusUsulan    StatusUsulan?    @map("status_usulan")
-  statusIhld      String?          @map("status_ihld")
-  idEprop         String?          @map("id_eprop")
-  statusInstalasi StatusInstalasi? @map("status_instalasi")
-  keterangan      Keterangan?      @map("keterangan")
-  newSc           String?          @map("new_sc")
+  statusUsulanId    String? @map("status_usulan_id")
+  statusIhld        String? @map("status_ihld")
+  idEprop           String? @map("id_eprop")
+  statusInstalasiId String? @map("status_instalasi_id")
+  keteranganId      String? @map("keterangan_id")
+  newSc             String? @map("new_sc")
 
   namaOdp   String?   @map("nama_odp")
   tglGolive DateTime? @map("tgl_golive")
@@ -119,6 +143,12 @@ model NewBgesB2BOlo {
   used          Int?
   isTotal       Int?     @map("is_total")
   occPercentage Decimal? @map("occ_percentage") @db.Decimal(5, 2)
+
+  jenisKendala    EnumValue? @relation("JenisKendala", fields: [jenisKendalaId], references: [id])
+  planTematik     EnumValue? @relation("PlanTematik", fields: [planTematikId], references: [id])
+  statusUsulan    EnumValue? @relation("StatusUsulan", fields: [statusUsulanId], references: [id])
+  statusInstalasi EnumValue? @relation("StatusInstalasi", fields: [statusInstalasiId], references: [id])
+  keterangan      EnumValue? @relation("Keterangan", fields: [keteranganId], references: [id])
 
   ndeUsulan NdeUsulanB2B?
 
@@ -134,8 +164,8 @@ model NewBgesB2BOlo {
   @@index([tglInputUsulan])
   @@index([datel])
   @@index([sto])
-  @@index([statusUsulan])
-  @@index([statusInstalasi])
+  @@index([statusUsulanId])
+  @@index([statusInstalasiId])
   @@map("new_bges_b2b_olo")
 }
 
@@ -145,28 +175,31 @@ model NdeUsulanB2B {
   no       String @unique
   nomorNcx String @unique @map("nomor_ncx")
 
-  statusJt        StatusJt? @map("status_jt")
-  c2r             Decimal?  @db.Decimal(10, 2)
-  alamatInstalasi String?   @map("alamat_instalasi") @db.Text
-  jenisLayanan    String?   @map("jenis_layanan")
-  nilaiKontrak    Decimal?  @map("nilai_kontrak") @db.Decimal(15, 0)
-  rabSurvey       Decimal?  @map("rab_survey") @db.Decimal(15, 0)
-  nomorNde        String?   @map("nomor_nde")
-  progressJt      String?   @map("progress_jt")
-  namaOdp         String?   @map("nama_odp")
-  jarakOdp        Decimal?  @map("jarak_odp") @db.Decimal(10, 2)
-  keterangan      String?   @db.Text
+  statusJtId      String?  @map("status_jt_id")
+  c2r             Decimal? @db.Decimal(10, 2)
+  alamatInstalasi String?  @map("alamat_instalasi") @db.Text
+  jenisLayanan    String?  @map("jenis_layanan")
+  nilaiKontrak    Decimal? @map("nilai_kontrak") @db.Decimal(15, 0)
+  rabSurvey       Decimal? @map("rab_survey") @db.Decimal(15, 0)
+  nomorNde        String?  @map("nomor_nde")
+  progressJt      String?  @map("progress_jt")
+  namaOdp         String?  @map("nama_odp")
+  jarakOdp        Decimal? @map("jarak_odp") @db.Decimal(10, 2)
+  keterangan      String?  @db.Text
 
-  datel           String?
-  sto             String?
-  namaPelanggan   String?          @map("nama_pelanggan")
-  latitude        String?
-  longitude       String?
-  ihldLopId       Int?             @map("ihld_lop_id")
-  planTematik     String?          @map("plan_tematik")
-  rabHld          Decimal?         @map("rab_hld") @db.Decimal(15, 0)
-  statusUsulan    String?          @map("status_usulan")
-  statusInstalasi StatusInstalasi? @map("status_instalasi")
+  datel             String?
+  sto               String?
+  namaPelanggan     String?  @map("nama_pelanggan")
+  latitude          String?
+  longitude         String?
+  ihldLopId         Int?     @map("ihld_lop_id")
+  planTematik       String?  @map("plan_tematik")
+  rabHld            Decimal? @map("rab_hld") @db.Decimal(15, 0)
+  statusUsulan      String?  @map("status_usulan")
+  statusInstalasiId String?  @map("status_instalasi_id")
+
+  statusJt        EnumValue? @relation("StatusJt", fields: [statusJtId], references: [id])
+  statusInstalasi EnumValue? @relation("StatusInstalasiNde", fields: [statusInstalasiId], references: [id])
 
   masterData NewBgesB2BOlo? @relation(fields: [nomorNcx], references: [idKendala])
 
@@ -183,92 +216,4 @@ model NdeUsulanB2B {
   @@index([sto])
   @@index([syncStatus])
   @@map("nde_usulan_b2b")
-}
-
-enum JenisKendala {
-  ODP_FULL
-  JARAK_PT1_250
-  BLANK_FO
-  JARAK_JAUH_500
-  BLANK_TIANG
-  NEED_MATAM_3PCS
-}
-
-enum PlanTematik {
-  PT1
-  PT2S
-  PT2NS
-  PT3
-  PT4
-  TKAP
-}
-
-enum StatusUsulan {
-  REVIEW_SDI
-  BELUM_INPUT
-  REVIEW_OPTIMA
-  REVIEW_ED
-  CEK_SDI_REGIONAL
-  APPROVED
-  DROP_LOP
-  KONFIRMASI_ULANG
-  NOT_APPROVED
-  PENDING
-  CANCEL
-  OGP_IHLD
-  WAITING_CARING
-}
-
-enum StatusInstalasi {
-  REVIEW
-  SURVEY
-  INSTALASI
-  DONE_INSTALASI
-  GO_LIVE
-  CANCEL
-  PENDING
-  KENDALA
-  WAITING_BUDGET
-  DROP
-  WAITING_PROJECT_JPP
-  WAITING_CB
-}
-
-enum Keterangan {
-  PELANGGAN_BATAL
-  PT1_ONLY
-  PERIJINAN
-  AKI_TIDAK_LAYAK
-  REDESIGN
-  INDIKASI_RESELLER
-  FEEDER_HABIS
-  KENDALA_IZIN_TANAM_TN
-  PORT_OLT_HABIS
-  MATTAM_TIANG
-  DISTRIBUSI_HABIS
-  MENUNGGU_M_OLT
-  MENUNGGU_RELOKASI_TIANG_PLN
-  CORE_DISTRIBUSI_CACAT
-  MENUNGGU_CO_FEEDER
-  PORT_EA_HABIS
-  INVALID_LOCATION
-  HOLD_BY_BGES
-  WAITING_REVIT_ODP
-  HOLD_BY_PED
-}
-
-enum StatusJt {
-  AANWIJZING
-  AKI_TIDAK_LAYAK
-  APPROVE
-  CANCEL_PELANGGAN
-  DROP_BY_AM
-  DROP_BY_WITEL
-  GOLIVE
-  INPUT_PAKET_LAIN
-  LANJUT_BATCH_3
-  NJKI_BELUM_LENGKAP
-  NOT_APPROVE
-  REVENUE_KURANG
-  TUNGGU_JPP
 }

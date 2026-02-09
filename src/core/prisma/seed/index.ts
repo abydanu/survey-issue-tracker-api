@@ -58,6 +58,7 @@ async function main() {
     })
 
     console.log(`✅ ${TOTAL_USER} fake users inserted`);
+
     console.log("Seeding Sukses");
 }
 
@@ -65,7 +66,7 @@ main()
     .catch((e) => {
         console.log("Error", e);
         process.exit(1)
-    })  
+    })
     .finally(async () => {
         await prisma.$disconnect();
     });

@@ -1,5 +1,5 @@
 import prismaClient from '../../../infrastructure/database/prisma.js';
-import { Prisma, StatusJt, StatusInstalasi, PlanTematik, StatusUsulan, JenisKendala, Keterangan } from '../../../generated/prisma/client.js';
+import { Prisma } from '../../../generated/prisma/client.js';
 import type { ISyncRepository } from '../domain/sync.repository.js';
 import type {
   Survey,
@@ -11,94 +11,119 @@ import type {
   NdeUsulanB2BRow,
   NewBgesB2BOloRow,
 } from '../domain/sync.entity.js';
+import { EnumValueService, type EnumType } from '../application/enum-value.service.js';
 
 export class SyncPrismaRepository implements ISyncRepository {
   prisma = prismaClient;
+  private enumValueService: EnumValueService;
 
-  private validateStatusInstalasi(value: any): StatusInstalasi | null {
-    if (!value || typeof value !== 'string') return null;
-
-    const upperValue = value.toUpperCase().trim();
-    const validValues = Object.values(StatusInstalasi);
-
-    if (validValues.includes(upperValue as StatusInstalasi)) {
-      return upperValue as StatusInstalasi;
-    }
-
-    console.warn(`Invalid StatusInstalasi value: "${value}". Valid values are: ${validValues.join(', ')}`);
-    return null;
+  constructor() {
+    this.enumValueService = new EnumValueService();
   }
 
-  private validateStatusJt(value: any): StatusJt | null {
-    if (!value || typeof value !== 'string') return null;
-
-    const upperValue = value.toUpperCase().trim();
-    const validValues = Object.values(StatusJt);
-
-    if (validValues.includes(upperValue as StatusJt)) {
-      return upperValue as StatusJt;
+  private async findOrCreateEnumId(enumType: EnumType, value: string | null): Promise<string | null> {
+    if (!value) return null;
+    // Ignore dash/minus as it's not a valid enum value
+    if (value.trim() === '-') return null;
+    try {
+      return await this.enumValueService.findOrCreateEnumValue(enumType, value);
+    } catch (error) {
+      console.warn(`Failed to find/create enum ${enumType}.${value}:`, error);
+      return null;
     }
-
-    console.warn(`Invalid StatusJt value: "${value}". Valid values are: ${validValues.join(', ')}`);
-    return null;
   }
 
-  private validatePlanTematik(value: any): PlanTematik | null {
-    if (!value || typeof value !== 'string') return null;
+  private async processEnumFields(data: any): Promise<{
+    jenisKendala?: { connect: { id: string } } | undefined;
+    planTematik?: { connect: { id: string } } | undefined;
+    statusUsulan?: { connect: { id: string } } | undefined;
+    statusInstalasi?: { connect: { id: string } } | undefined;
+    keterangan?: { connect: { id: string } } | undefined;
+  }> {
+    const result: any = {};
 
-    const upperValue = value.toUpperCase().trim();
-    const validValues = Object.values(PlanTematik);
-
-    if (validValues.includes(upperValue as PlanTematik)) {
-      return upperValue as PlanTematik;
+    if (data.jenisKendala !== undefined) {
+      const id = await this.findOrCreateEnumId('JenisKendala', data.jenisKendala);
+      if (id) result.jenisKendala = { connect: { id } };
+    }
+    if (data.planTematik !== undefined) {
+      const id = await this.findOrCreateEnumId('PlanTematik', data.planTematik);
+      if (id) result.planTematik = { connect: { id } };
+    }
+    if (data.statusUsulan !== undefined) {
+      const id = await this.findOrCreateEnumId('StatusUsulan', data.statusUsulan);
+      if (id) result.statusUsulan = { connect: { id } };
+    }
+    if (data.statusInstalasi !== undefined) {
+      const id = await this.findOrCreateEnumId('StatusInstalasi', data.statusInstalasi);
+      if (id) result.statusInstalasi = { connect: { id } };
+    }
+    if (data.keterangan !== undefined) {
+      const id = await this.findOrCreateEnumId('Keterangan', data.keterangan);
+      if (id) result.keterangan = { connect: { id } };
     }
 
-    console.warn(`Invalid PlanTematik value: "${value}". Valid values are: ${validValues.join(', ')}`);
-    return null;
+    return result;
   }
 
-  private validateStatusUsulan(value: any): StatusUsulan | null {
-    if (!value || typeof value !== 'string') return null;
+  // Process enum fields for NDE USULAN B2B (only statusJt and statusInstalasi use relations)
+  private async processNdeEnumFields(data: any): Promise<{
+    statusJtId?: string | null;
+    statusInstalasiId?: string | null;
+  }> {
+    const result: any = {};
 
-    const upperValue = value.toUpperCase().trim();
-    const validValues = Object.values(StatusUsulan);
-
-    if (validValues.includes(upperValue as StatusUsulan)) {
-      return upperValue as StatusUsulan;
+    if (data.statusJt !== undefined) {
+      result.statusJtId = await this.findOrCreateEnumId('StatusJt', data.statusJt);
+    }
+    if (data.statusInstalasi !== undefined) {
+      result.statusInstalasiId = await this.findOrCreateEnumId('StatusInstalasi', data.statusInstalasi);
     }
 
-    console.warn(`Invalid StatusUsulan value: "${value}". Valid values are: ${validValues.join(', ')}`);
-    return null;
+    return result;
   }
 
-  private validateJenisKendala(value: any): JenisKendala | null {
-    if (!value || typeof value !== 'string') return null;
-
-    const upperValue = value.toUpperCase().trim();
-    const validValues = Object.values(JenisKendala);
-
-    if (validValues.includes(upperValue as JenisKendala)) {
-      return upperValue as JenisKendala;
-    }
-
-    console.warn(`Invalid JenisKendala value: "${value}". Valid values are: ${validValues.join(', ')}`);
-    return null;
+  // Helper method untuk backward compatibility - convert enum relations back to string values
+  private convertEnumRelationsToStrings(data: any): any {
+    if (!data) return data;
+    
+    const result = { ...data };
+    
+    // Convert enum relations to string values for backward compatibility
+    if (data.jenisKendala?.value) result.jenisKendala = data.jenisKendala.value;
+    if (data.planTematik?.value) result.planTematik = data.planTematik.value;
+    if (data.statusUsulan?.value) result.statusUsulan = data.statusUsulan.value;
+    if (data.statusInstalasi?.value) result.statusInstalasi = data.statusInstalasi.value;
+    if (data.keterangan?.value) result.keterangan = data.keterangan.value;
+    if (data.statusJt?.value) result.statusJt = data.statusJt.value;
+    
+    return result;
   }
 
-  private validateKeterangan(value: any): Keterangan | null {
-    if (!value || typeof value !== 'string') return null;
-
-    const upperValue = value.toUpperCase().trim();
-    const validValues = Object.values(Keterangan);
-
-    if (validValues.includes(upperValue as Keterangan)) {
-      return upperValue as Keterangan;
-    }
-
-    console.warn(`Invalid Keterangan value: "${value}". Valid values are: ${validValues.join(', ')}`);
-    return null;
+  // Temporary stub methods for backward compatibility - will be removed after full migration
+  private validateJenisKendala(value: any): string | null {
+    return value ? String(value).trim() : null;
   }
 
+  private validatePlanTematik(value: any): string | null {
+    return value ? String(value).trim() : null;
+  }
+
+  private validateStatusUsulan(value: any): string | null {
+    return value ? String(value).trim() : null;
+  }
+
+  private validateStatusInstalasi(value: any): string | null {
+    return value ? String(value).trim() : null;
+  }
+
+  private validateKeterangan(value: any): string | null {
+    return value ? String(value).trim() : null;
+  }
+
+  private validateStatusJt(value: any): string | null {
+    return value ? String(value).trim() : null;
+  }
 
   private compareDecimal(existing: any, newValue: any): boolean {
     if (existing === null && newValue === null) return true;
@@ -167,7 +192,10 @@ export class SyncPrismaRepository implements ISyncRepository {
 
     if (query.statusJt && query.statusJt.trim() && query.statusJt.trim().toLowerCase() !== 'all') {
       where.statusJt = {
-        equals: query.statusJt.trim() as StatusJt,
+        value: {
+          equals: query.statusJt.trim(),
+          mode: Prisma.QueryMode.insensitive
+        }
       };
     }
 
@@ -222,7 +250,17 @@ export class SyncPrismaRepository implements ISyncRepository {
       this.prisma.ndeUsulanB2B.findMany({
         where,
         include: {
-          masterData: true,
+          masterData: {
+            include: {
+              jenisKendala: true,
+              planTematik: true,
+              statusUsulan: true,
+              statusInstalasi: true,
+              keterangan: true,
+            },
+          },
+          statusJt: true,
+          statusInstalasi: true,
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -251,24 +289,24 @@ export class SyncPrismaRepository implements ISyncRepository {
       namaPelanggan: item.namaPelanggan ?? master.namaPelanggan ?? null,
       latitude: item.latitude ?? master.latitude ?? null,
       longitude: item.longitude ?? master.longitude ?? null,
-      jenisKendala: master.jenisKendala ?? null,
-      pltTemuan: master.planTematik ?? null,
+      jenisKendala: master.jenisKendala?.value ?? null,
+      pltTemuan: master.planTematik?.value ?? null,
       rabHldSummary: master.rabHld ? Number(master.rabHld) : null,
       ihld: master.ihldValue ? Number(master.ihldValue) : null,
-      statusUsulan: master.statusUsulan ?? null,
+      statusUsulan: master.statusUsulan?.value ?? null,
       statusIhld: master.statusIhld ?? null,
       idEprop: master.idEprop ?? null,
-      statusInstalasi: master.statusInstalasi ?? null,
-      keterangan: master.keterangan ?? null,
+      statusInstalasi: master.statusInstalasi?.value ?? item.statusInstalasi?.value ?? null,
+      keterangan: master.keterangan?.value ?? null,
       newSc: master.newSc ?? null,
-      statusJt: item.statusJt ?? null,
+      statusJt: item.statusJt?.value ?? null,
       c2r: item.c2r ? Number(item.c2r) : null,
       nomorNcx: item.nomorNcx ?? null,
       alamat: item.alamatInstalasi ?? null,
       jenisLayanan: item.jenisLayanan ?? null,
       nilaiKontrak: item.nilaiKontrak ? BigInt(item.nilaiKontrak.toString()) : null,
       ihldLop: item.ihldLopId ?? null,
-      planTematik: item.planTematik ?? master.planTematik ?? null,
+      planTematik: item.planTematik ?? master.planTematik?.value ?? null,
       rabHldDetail: master.rabHld ? BigInt(master.rabHld.toString()) : null,
       rabSurvey: item.rabSurvey ? BigInt(item.rabSurvey.toString()) : null,
       noNde: item.nomorNde ?? null,
@@ -285,7 +323,17 @@ export class SyncPrismaRepository implements ISyncRepository {
     const survey = await this.prisma.ndeUsulanB2B.findUnique({
       where: { no },
       include: {
-        masterData: true,
+        masterData: {
+          include: {
+            jenisKendala: true,
+            planTematik: true,
+            statusUsulan: true,
+            statusInstalasi: true,
+            keterangan: true,
+          },
+        },
+        statusJt: true,
+        statusInstalasi: true,
       },
     });
 
@@ -298,7 +346,17 @@ export class SyncPrismaRepository implements ISyncRepository {
     const survey = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
       include: {
-        masterData: true,
+        masterData: {
+          include: {
+            jenisKendala: true,
+            planTematik: true,
+            statusUsulan: true,
+            statusInstalasi: true,
+            keterangan: true,
+          },
+        },
+        statusJt: true,
+        statusInstalasi: true,
       },
     });
 
@@ -351,7 +409,17 @@ export class SyncPrismaRepository implements ISyncRepository {
         syncStatus: 'SYNCED',
       },
       include: {
-        masterData: true,
+        masterData: {
+          include: {
+            jenisKendala: true,
+            planTematik: true,
+            statusUsulan: true,
+            statusInstalasi: true,
+            keterangan: true,
+          },
+        },
+        statusJt: true,
+        statusInstalasi: true,
       },
     });
 
@@ -361,7 +429,19 @@ export class SyncPrismaRepository implements ISyncRepository {
   async updateSurvey(nomorNcx: string, data: UpdateSurveyDto): Promise<Survey> {
     const existing = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
-      include: { masterData: true },
+      include: {
+        masterData: {
+          include: {
+            jenisKendala: true,
+            planTematik: true,
+            statusUsulan: true,
+            statusInstalasi: true,
+            keterangan: true,
+          },
+        },
+        statusJt: true,
+        statusInstalasi: true,
+      },
     });
 
     if (!existing) {
@@ -370,7 +450,31 @@ export class SyncPrismaRepository implements ISyncRepository {
 
     // Prepare update data for NDE USULAN B2B
     const updateData: any = {};
-    if (data.statusJt !== undefined) updateData.statusJt = data.statusJt;
+    
+    // Handle statusJt enum relation
+    if (data.statusJt !== undefined) {
+      if (data.statusJt === null) {
+        updateData.statusJtId = null;
+      } else {
+        const statusJtId = await this.findOrCreateEnumId('StatusJt', data.statusJt);
+        if (statusJtId) {
+          updateData.statusJtId = statusJtId;
+        }
+      }
+    }
+    
+    // Handle statusInstalasi enum relation
+    if (data.statusInstalasi !== undefined) {
+      if (data.statusInstalasi === null) {
+        updateData.statusInstalasiId = null;
+      } else {
+        const statusInstalasiId = await this.findOrCreateEnumId('StatusInstalasi', data.statusInstalasi);
+        if (statusInstalasiId) {
+          updateData.statusInstalasiId = statusInstalasiId;
+        }
+      }
+    }
+    
     if (data.c2r !== undefined) updateData.c2r = data.c2r !== null ? new Prisma.Decimal(data.c2r.toString()) : null;
     if (data.nomorNcx !== undefined) {
       if (data.nomorNcx === null || data.nomorNcx === '') {
@@ -398,9 +502,9 @@ export class SyncPrismaRepository implements ISyncRepository {
     if (data.jarakOdp !== undefined) updateData.jarakOdp = data.jarakOdp ? new Prisma.Decimal(data.jarakOdp.toString()) : null;
     if (data.keteranganText !== undefined) updateData.keterangan = data.keteranganText;
     
-    // Field baru untuk sync status
+    // Field string biasa (bukan enum relation di NDE USULAN B2B)
     if (data.statusUsulan !== undefined) updateData.statusUsulan = data.statusUsulan;
-    if (data.statusInstalasi !== undefined) updateData.statusInstalasi = data.statusInstalasi;
+    if (data.planTematik !== undefined) updateData.planTematik = data.planTematik;
 
     // LOGIC BARU: Sync status antara kedua tabel dalam transaction
     const survey = await this.prisma.$transaction(async (tx) => {
@@ -409,7 +513,17 @@ export class SyncPrismaRepository implements ISyncRepository {
         where: { id: existing.id },
         data: updateData,
         include: {
-          masterData: true,
+          masterData: {
+            include: {
+              jenisKendala: true,
+              planTematik: true,
+              statusUsulan: true,
+              statusInstalasi: true,
+              keterangan: true,
+            },
+          },
+          statusJt: true,
+          statusInstalasi: true,
         },
       });
 
@@ -421,10 +535,16 @@ export class SyncPrismaRepository implements ISyncRepository {
 
         // Sync status dari NDE USULAN B2B ke NEW BGES B2B
         if (data.statusUsulan !== undefined) {
-          masterUpdateData.statusUsulan = this.validateStatusUsulan(data.statusUsulan);
+          const statusUsulanId = await this.findOrCreateEnumId('StatusUsulan', data.statusUsulan);
+          if (statusUsulanId) {
+            masterUpdateData.statusUsulan = { connect: { id: statusUsulanId } };
+          }
         }
         if (data.statusInstalasi !== undefined) {
-          masterUpdateData.statusInstalasi = this.validateStatusInstalasi(data.statusInstalasi);
+          const statusInstalasiId = await this.findOrCreateEnumId('StatusInstalasi', data.statusInstalasi);
+          if (statusInstalasiId) {
+            masterUpdateData.statusInstalasi = { connect: { id: statusInstalasiId } };
+          }
         }
 
         // Update master data jika ada perubahan status
@@ -482,6 +602,13 @@ export class SyncPrismaRepository implements ISyncRepository {
   async getMasterDataByIdKendala(idKendala: string): Promise<any | null> {
     const masterData = await this.prisma.newBgesB2BOlo.findUnique({
       where: { idKendala: idKendala.trim() },
+      include: {
+        jenisKendala: true,
+        planTematik: true,
+        statusUsulan: true,
+        statusInstalasi: true,
+        keterangan: true,
+      }
     });
 
     if (!masterData) {
@@ -500,15 +627,15 @@ export class SyncPrismaRepository implements ISyncRepository {
       namaPelanggan: masterData.namaPelanggan,
       latitude: masterData.latitude,
       longitude: masterData.longitude,
-      jenisKendala: masterData.jenisKendala,
-      planTematik: masterData.planTematik,
+      jenisKendala: masterData.jenisKendala?.value || null,
+      planTematik: masterData.planTematik?.value || null,
       rabHld: masterData.rabHld,
       ihldValue: masterData.ihldValue,
-      statusUsulan: masterData.statusUsulan,
+      statusUsulan: masterData.statusUsulan?.value || null,
       statusIhld: masterData.statusIhld,
       idEprop: masterData.idEprop,
-      statusInstalasi: masterData.statusInstalasi,
-      keterangan: masterData.keterangan,
+      statusInstalasi: masterData.statusInstalasi?.value || null,
+      keterangan: masterData.keterangan?.value || null,
       newSc: masterData.newSc,
     };
   }
@@ -527,19 +654,24 @@ export class SyncPrismaRepository implements ISyncRepository {
       await this.prisma.$transaction(
         async (tx: any) => {
           await Promise.all(
-            batch.map((detail) => {
+            batch.map(async (detail) => {
               if (!detail.idKendala || !detail.idKendala.trim()) {
                 return Promise.resolve(null);
               }
 
+              // Process enum fields
+              const enumFields = await this.processEnumFields(detail);
+
               const updateData: any = {
                 syncStatus: 'SYNCED',
                 lastSyncAt: new Date(),
+                ...enumFields,
               };
               const createData: any = {
                 idKendala: detail.idKendala.trim(),
                 syncStatus: 'SYNCED',
                 lastSyncAt: new Date(),
+                ...enumFields,
               };
 
               if (detail.umur !== undefined) {
@@ -578,22 +710,6 @@ export class SyncPrismaRepository implements ISyncRepository {
                 updateData.longitude = detail.longitude ?? null;
                 createData.longitude = detail.longitude ?? null;
               }
-              if (detail.jenisKendala !== undefined) {
-                const validJenisKendala = this.validateJenisKendala(detail.jenisKendala);
-                updateData.jenisKendala = validJenisKendala;
-                createData.jenisKendala = validJenisKendala;
-                if (detail.jenisKendala && !validJenisKendala) {
-                  console.warn(`Invalid JenisKendala for record idKendala: ${detail.idKendala}, value: "${detail.jenisKendala}"`);
-                }
-              }
-              if (detail.planTematik !== undefined) {
-                const validPlanTematik = this.validatePlanTematik(detail.planTematik);
-                updateData.planTematik = validPlanTematik;
-                createData.planTematik = validPlanTematik;
-                if (detail.planTematik && !validPlanTematik) {
-                  console.warn(`Invalid PlanTematik for record idKendala: ${detail.idKendala}, value: "${detail.planTematik}"`);
-                }
-              }
               if (detail.rabHld !== undefined) {
                 updateData.rabHld = detail.rabHld !== null ? new Prisma.Decimal(detail.rabHld.toString()) : null;
                 createData.rabHld = detail.rabHld !== null ? new Prisma.Decimal(detail.rabHld.toString()) : null;
@@ -602,10 +718,6 @@ export class SyncPrismaRepository implements ISyncRepository {
                 updateData.ihldValue = detail.ihldValue ?? null;
                 createData.ihldValue = detail.ihldValue ?? null;
               }
-              if (detail.statusUsulan !== undefined) {
-                updateData.statusUsulan = detail.statusUsulan ?? null;
-                createData.statusUsulan = detail.statusUsulan ?? null;
-              }
               if (detail.statusIhld !== undefined) {
                 updateData.statusIhld = detail.statusIhld ?? null;
                 createData.statusIhld = detail.statusIhld ?? null;
@@ -613,18 +725,6 @@ export class SyncPrismaRepository implements ISyncRepository {
               if (detail.idEprop !== undefined) {
                 updateData.idEprop = detail.idEprop ?? null;
                 createData.idEprop = detail.idEprop ?? null;
-              }
-              if (detail.statusInstalasi !== undefined) {
-                updateData.statusInstalasi = detail.statusInstalasi ?? null;
-                createData.statusInstalasi = detail.statusInstalasi ?? null;
-              }
-              if (detail.keterangan !== undefined) {
-                const validKeterangan = this.validateKeterangan(detail.keterangan);
-                updateData.keterangan = validKeterangan;
-                createData.keterangan = validKeterangan;
-                if (detail.keterangan && !validKeterangan) {
-                  console.warn(`Invalid Keterangan for record idKendala: ${detail.idKendala}, value: "${detail.keterangan}"`);
-                }
               }
               if (detail.newSc !== undefined) {
                 updateData.newSc = detail.newSc ?? null;
@@ -1188,7 +1288,7 @@ export class SyncPrismaRepository implements ISyncRepository {
     errors: number;
     batchesProcessed: number;
   }> {
-    const BATCH_SIZE = 25; // Smaller batches for reliability
+    const BATCH_SIZE = 15; // Reduced for Vercel transaction timeout (was 25)
     const MAX_EXECUTION_TIME = 8500; // 8.5 seconds max - leave buffer for response
     const startTime = Date.now();
 
@@ -1222,40 +1322,55 @@ export class SyncPrismaRepository implements ISyncRepository {
               async (tx) => {
                 const operations = batch.map(async (detail) => {
                   if (!detail.idKendala || !detail.idKendala.trim()) {
+                    console.warn(`Skipping detail record with empty idKendala at row`);
                     stats.skipped++;
                     return null;
                   }
 
                   try {
+                    // Process enum fields
+                    const enumFields = await this.processEnumFields(detail);
+                    
+                    // Log tanggal input untuk debug
+                    if (detail.tglInputUsulan) {
+                      console.log(`Processing ${detail.idKendala} with tglInputUsulan: ${detail.tglInputUsulan}`);
+                    } else {
+                      console.warn(`Missing tglInputUsulan for ${detail.idKendala}`);
+                    }
+                    
                     const result = await tx.newBgesB2BOlo.upsert({
                       where: { idKendala: detail.idKendala.trim() },
                       update: {
                         syncStatus: 'SYNCED',
                         lastSyncAt: new Date(),
-                        // Update tanggal input jika ada di sheet, format mm/dd/yyyy
-                        tglInputUsulan: detail.tglInputUsulan ?? undefined,
-                        umur: detail.umur ?? null,
-                        bln: detail.bln ?? null,
-                        jenisOrder: detail.jenisOrder ?? null,
-                        datel: detail.datel ?? null,
-                        sto: detail.sto ?? null,
-                        namaPelanggan: detail.namaPelanggan ?? null,
-                        latitude: detail.latitude ?? null,
-                        longitude: detail.longitude ?? null,
-                        jenisKendala: this.validateJenisKendala(detail.jenisKendala),
-                        planTematik: this.validatePlanTematik(detail.planTematik),
-                        rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
-                        ihldValue: detail.ihldValue ?? null,
-                        statusUsulan: this.validateStatusUsulan(detail.statusUsulan),
-                        statusIhld: detail.statusIhld ?? null,
-                        statusInstalasi: this.validateStatusInstalasi(detail.statusInstalasi),
-                        keterangan: this.validateKeterangan(detail.keterangan),
+                        // PERBAIKAN: Selalu update tanggal input dari sheet (jangan skip dengan undefined)
+                        tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : undefined,
+                        umur: detail.umur !== undefined ? detail.umur : undefined,
+                        bln: detail.bln !== undefined ? detail.bln : undefined,
+                        jenisOrder: detail.jenisOrder !== undefined ? detail.jenisOrder : undefined,
+                        datel: detail.datel !== undefined ? detail.datel : undefined,
+                        sto: detail.sto !== undefined ? detail.sto : undefined,
+                        namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : undefined,
+                        latitude: detail.latitude !== undefined ? detail.latitude : undefined,
+                        longitude: detail.longitude !== undefined ? detail.longitude : undefined,
+                        ...enumFields,
+                        rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : undefined,
+                        ihldValue: detail.ihldValue !== undefined ? detail.ihldValue : undefined,
+                        statusIhld: detail.statusIhld !== undefined ? detail.statusIhld : undefined,
+                        idEprop: detail.idEprop !== undefined ? detail.idEprop : undefined,
+                        newSc: detail.newSc !== undefined ? detail.newSc : undefined,
+                        namaOdp: detail.namaOdp !== undefined ? detail.namaOdp : undefined,
+                        tglGolive: detail.tglGolive !== undefined ? detail.tglGolive : undefined,
+                        avai: detail.avai !== undefined ? detail.avai : undefined,
+                        used: detail.used !== undefined ? detail.used : undefined,
+                        isTotal: detail.isTotal !== undefined ? detail.isTotal : undefined,
+                        occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : undefined,
                       },
                       create: {
                         idKendala: detail.idKendala.trim(),
                         syncStatus: 'SYNCED',
                         lastSyncAt: new Date(),
-                        // Tanggal input kosong saat create, bisa diedit nanti
+                        // PERBAIKAN: Gunakan nilai dari sheet saat create
                         tglInputUsulan: detail.tglInputUsulan ?? null,
                         umur: detail.umur ?? null,
                         bln: detail.bln ?? null,
@@ -1265,14 +1380,18 @@ export class SyncPrismaRepository implements ISyncRepository {
                         namaPelanggan: detail.namaPelanggan ?? null,
                         latitude: detail.latitude ?? null,
                         longitude: detail.longitude ?? null,
-                        jenisKendala: this.validateJenisKendala(detail.jenisKendala),
-                        planTematik: this.validatePlanTematik(detail.planTematik),
+                        ...enumFields,
                         rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
                         ihldValue: detail.ihldValue ?? null,
-                        statusUsulan: this.validateStatusUsulan(detail.statusUsulan),
                         statusIhld: detail.statusIhld ?? null,
-                        statusInstalasi: this.validateStatusInstalasi(detail.statusInstalasi),
-                        keterangan: this.validateKeterangan(detail.keterangan),
+                        idEprop: detail.idEprop ?? null,
+                        newSc: detail.newSc ?? null,
+                        namaOdp: detail.namaOdp ?? null,
+                        tglGolive: detail.tglGolive ?? null,
+                        avai: detail.avai ?? null,
+                        used: detail.used ?? null,
+                        isTotal: detail.isTotal ?? null,
+                        occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : null,
                       },
                     });
                     stats.created++;
@@ -1290,8 +1409,8 @@ export class SyncPrismaRepository implements ISyncRepository {
                 await Promise.all(operations);
               },
               {
-                maxWait: 3000,
-                timeout: 5000,
+                maxWait: 8000,  // Increased for Vercel
+                timeout: 10000, // 10 seconds max per transaction
               }
             );
           } catch (batchError) {
@@ -1336,6 +1455,10 @@ export class SyncPrismaRepository implements ISyncRepository {
                     // Jika tidak ada di NEW BGES B2B, buat master data kosong dengan tanggal input null
                     if (!existingMaster) {
                       console.log(`Creating missing master data for nomorNcx: ${nomorNcx}`);
+                      
+                      // Process enum fields for master data
+                      const masterEnumFields = await this.processEnumFields(summary);
+                      
                       await tx.newBgesB2BOlo.create({
                         data: {
                           idKendala: String(nomorNcx).trim(),
@@ -1349,33 +1472,34 @@ export class SyncPrismaRepository implements ISyncRepository {
                           namaPelanggan: summary.namaPelanggan ?? null,
                           latitude: summary.latitude ?? null,
                           longitude: summary.longitude ?? null,
-                          planTematik: this.validatePlanTematik(summary.planTematik),
+                          ...masterEnumFields,
                           rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                          statusUsulan: this.validateStatusUsulan(summary.statusUsulan),
-                          statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi),
                         }
                       });
                     } else {
                       // Jika ada, sync status dari NDE USULAN B2B ke NEW BGES B2B
+                      const masterEnumFields = await this.processEnumFields(summary);
+                      
                       await tx.newBgesB2BOlo.update({
                         where: { idKendala: String(nomorNcx).trim() },
                         data: {
                           syncStatus: 'SYNCED',
                           lastSyncAt: new Date(),
-                          // Sync status dari NDE USULAN B2B
-                          statusUsulan: this.validateStatusUsulan(summary.statusUsulan) ?? existingMaster.statusUsulan,
-                          statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi) ?? existingMaster.statusInstalasi,
+                          // Sync status dari NDE USULAN B2B - use existing values if new ones are null
+                          ...masterEnumFields,
                           // Update data lain jika kosong di master
                           datel: existingMaster.datel ?? summary.datel ?? null,
                           sto: existingMaster.sto ?? summary.sto ?? null,
                           namaPelanggan: existingMaster.namaPelanggan ?? summary.namaPelanggan ?? null,
                           latitude: existingMaster.latitude ?? summary.latitude ?? null,
-                          longitude: existingMaster.longitude ?? summary.longitude ?? null,
-                          planTematik: existingMaster.planTematik ?? this.validatePlanTematik(summary.planTematik),
+                          longitude: existingMaster.longitude ?? null,
                           rabHld: existingMaster.rabHld ?? (summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null),
                         }
                       });
                     }
+
+                    // Process enum fields for NDE USULAN B2B (only statusJt and statusInstalasi)
+                    const ndeEnumFields = await this.processNdeEnumFields(summary);
 
                     // Upsert NDE USULAN B2B dengan relasi ke master data
                     const result = await tx.ndeUsulanB2B.upsert({
@@ -1383,7 +1507,7 @@ export class SyncPrismaRepository implements ISyncRepository {
                       update: {
                         syncStatus: 'SYNCED',
                         lastSyncAt: new Date(),
-                        statusJt: this.validateStatusJt(summary.statusJt),
+                        ...ndeEnumFields,
                         c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
                         alamatInstalasi: summary.alamatInstalasi ?? null,
                         jenisLayanan: summary.jenisLayanan ?? null,
@@ -1403,14 +1527,13 @@ export class SyncPrismaRepository implements ISyncRepository {
                         planTematik: summary.planTematik ?? null,
                         rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
                         statusUsulan: summary.statusUsulan ?? null,
-                        statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi),
                       },
                       create: {
                         no: no,
                         nomorNcx: String(nomorNcx).trim(),
                         syncStatus: 'SYNCED',
                         lastSyncAt: new Date(),
-                        statusJt: this.validateStatusJt(summary.statusJt),
+                        ...ndeEnumFields,
                         c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
                         alamatInstalasi: summary.alamatInstalasi ?? null,
                         jenisLayanan: summary.jenisLayanan ?? null,
@@ -1430,7 +1553,6 @@ export class SyncPrismaRepository implements ISyncRepository {
                         planTematik: summary.planTematik ?? null,
                         rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
                         statusUsulan: summary.statusUsulan ?? null,
-                        statusInstalasi: this.validateStatusInstalasi(summary.statusInstalasi),
                       },
                     });
                     stats.created++;
@@ -1449,8 +1571,8 @@ export class SyncPrismaRepository implements ISyncRepository {
                 await Promise.all(operations);
               },
               {
-                maxWait: 3000,
-                timeout: 5000,
+                maxWait: 8000,  // Increased for Vercel
+                timeout: 10000, // 10 seconds max per transaction
               }
             );
           } catch (batchError) {

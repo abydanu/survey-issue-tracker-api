@@ -27,13 +27,13 @@ const userController = new UserController(userService);
 
 const syncRepo = new SyncPrismaRepository();
 const dashboardService = new DashboardService(syncRepo);
-const adminService = new AdminService(syncRepo);
+const adminService = new AdminService(syncRepo); // Optional: pass { skipSheetSync: true } for Vercel timeout protection
 const syncService = new SyncService(syncRepo);
 const chartService = new ChartService();
 const statsService = new StatsService();
 const syncController = new SyncController(dashboardService, adminService, syncService, chartService, statsService);
 
-const enumService = new EnumService(syncRepo); 
+const enumService = new EnumService(); // EnumService doesn't take syncRepo as constructor argument
 const enumController = new EnumController(enumService);
 
 export const setupRoutes = (app: OpenAPIHono) => {

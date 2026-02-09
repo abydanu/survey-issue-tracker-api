@@ -19,7 +19,7 @@ export class SyncController {
     private syncService: SyncService,
     private chartService: ChartService,
     private statsService: StatsService
-  ) {}
+  ) { }
 
   getSurvey = async (c: Context) => {
     try {
@@ -64,13 +64,13 @@ export class SyncController {
       const tahunParam = c.req.query('tahun');
       const bulanParam = c.req.query('bulan');
       const hariTerakhirParam = c.req.query('hariTerakhir');
-      
+
       const filter = {
         tahun: tahunParam ? Number(tahunParam) : undefined,
         bulan: bulanParam ? Number(bulanParam) : undefined,
         hariTerakhir: hariTerakhirParam ? Number(hariTerakhirParam) : undefined,
       };
-      
+
       const data = await this.statsService.getStats(filter);
       return ApiResponseHelper.success(c, data, 'Statistics data');
     } catch (error: any) {
@@ -84,13 +84,13 @@ export class SyncController {
       const tahunParam = c.req.query('tahun');
       const bulanParam = c.req.query('bulan');
       const hariTerakhirParam = c.req.query('hariTerakhir');
-      
+
       const filter = {
         tahun: tahunParam ? Number(tahunParam) : undefined,
         bulan: bulanParam ? Number(bulanParam) : undefined,
         hariTerakhir: hariTerakhirParam ? Number(hariTerakhirParam) : undefined,
       };
-      
+
       const data = await this.chartService.getSurveyCountByPeriod(filter);
       return ApiResponseHelper.success(c, data, 'Survey count by period');
     } catch (error: any) {
@@ -98,19 +98,19 @@ export class SyncController {
       return ApiResponseHelper.error(c, 'Failed to fetch chart data');
     }
   };
-  
+
   getChartProfitLoss = async (c: Context) => {
     try {
       const tahunParam = c.req.query('tahun');
       const bulanParam = c.req.query('bulan');
       const hariTerakhirParam = c.req.query('hariTerakhir');
-      
+
       const filter = {
         tahun: tahunParam ? Number(tahunParam) : undefined,
         bulan: bulanParam ? Number(bulanParam) : undefined,
         hariTerakhir: hariTerakhirParam ? Number(hariTerakhirParam) : undefined,
       };
-      
+
       const data = await this.chartService.getProfitLossCount(filter);
       return ApiResponseHelper.success(c, data, 'Profit and loss count');
     } catch (error: any) {
@@ -118,19 +118,19 @@ export class SyncController {
       return ApiResponseHelper.error(c, 'Failed to fetch chart data');
     }
   };
-  
+
   getChartProfitLossByMonth = async (c: Context) => {
     try {
       const tahunParam = c.req.query('tahun');
       const bulanParam = c.req.query('bulan');
       const hariTerakhirParam = c.req.query('hariTerakhir');
-      
+
       const filter = {
         tahun: tahunParam ? Number(tahunParam) : undefined,
         bulan: bulanParam ? Number(bulanParam) : undefined,
         hariTerakhir: hariTerakhirParam ? Number(hariTerakhirParam) : undefined,
       };
-      
+
       const data = await this.chartService.getProfitLossByMonth(filter);
       return ApiResponseHelper.success(c, data, 'Profit and loss by month');
     } catch (error: any) {
@@ -148,9 +148,9 @@ export class SyncController {
           ...result,
           lastSync: result.lastSync
             ? {
-                ...result.lastSync,
-                syncedAt: result.lastSync.syncedAt.toISOString(),
-              }
+              ...result.lastSync,
+              syncedAt: result.lastSync.syncedAt.toISOString(),
+            }
             : null,
         },
         'Successfully fetched sync status'
@@ -159,27 +159,119 @@ export class SyncController {
       logger.error('Get sync status error:', error);
       return ApiResponseHelper.error(c, error.message || 'Failed to fetch sync status');
     }
-};
+  };
 
   syncFromSheets = async (c: Context) => {
     try {
-      logger.info('Starting optimized sync from Google Sheets...');
-      
-      const startTime = Date.now();
-      const result = await this.syncService.autoSyncFromSheets();
-      const endTime = Date.now();
-      const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
+      logger.info('Starting auto-batch sync from Google Sheets...');
 
-      return ApiResponseHelper.success(c, {
-        ...result,
-        processingTime
-      }, result.message);
+      const startTime = Date.now();
+
+
+      return this.syncAllBatchesWithProgress(c, startTime);
     } catch (error: any) {
-      logger.error('Optimized sync error:', error);
-      
-      
+      logger.error('Sync error:', error);
       return ApiResponseHelper.error(c, error.message || 'Sync failed - please try again');
     }
+  };
+
+  private syncAllBatchesWithProgress = async (c: Context, startTime: number) => {
+
+    c.header('Content-Type', 'text/event-stream');
+    c.header('Cache-Control', 'no-cache');
+    c.header('Connection', 'keep-alive');
+
+    const syncService = this.syncService;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+
+        const sendEvent = (data: any) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        };
+
+        try {
+          sendEvent({ type: 'start', message: 'Starting sync...' });
+
+          let batch = 0;
+          const batchSize = 50;
+          let completed = false;
+
+          const totalStats = {
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            errors: 0
+          };
+
+          while (!completed) {
+            sendEvent({
+              type: 'batch_start',
+              batch: batch + 1,
+              message: `Processing batch ${batch + 1}...`
+            });
+
+            const result = await syncService.syncBatch(batch, batchSize);
+
+            totalStats.created += result.stats.created;
+            totalStats.updated += result.stats.updated;
+            totalStats.skipped += result.stats.skipped;
+            totalStats.errors += result.stats.errors;
+
+            const percentage = result.totalRecords > 0
+              ? Math.round((result.totalProcessed / result.totalRecords) * 100)
+              : 0;
+
+            sendEvent({
+              type: 'batch_complete',
+              batch: batch + 1,
+              data: {
+                processedInBatch: result.processedInBatch,
+                totalProcessed: result.totalProcessed,
+                totalRecords: result.totalRecords,
+                remaining: result.remaining,
+                percentage,
+                stats: result.stats,
+                totalStats
+              },
+              message: `Batch ${batch + 1} completed: ${result.processedInBatch} records (${percentage}%)`
+            });
+
+            completed = result.completed;
+            batch++;
+
+
+            if (!completed) {
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
+          }
+
+          const endTime = Date.now();
+          const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
+
+          sendEvent({
+            type: 'complete',
+            data: {
+              totalBatches: batch,
+              totalStats,
+              processingTime
+            },
+            message: `Sync completed! ${totalStats.created} created, ${totalStats.updated} updated`
+          });
+
+          controller.close();
+        } catch (error: any) {
+          sendEvent({
+            type: 'error',
+            message: error.message || 'Sync failed'
+          });
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream);
   };
 
   syncEnumsFromSheets = async (c: Context) => {
@@ -215,7 +307,16 @@ export class SyncController {
       const username = user?.name || user?.username || 'User';
       const nomorNc = c.req.param('nomorNcx');
       const body = await c.req.json<UpdateSurveyDto>();
-      const updated = await this.adminService.updateSurvey(nomorNc, body);
+
+      const TIMEOUT_MS = 8000;
+
+      const updatePromise = this.adminService.updateSurvey(nomorNc, body);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Update timeout')), TIMEOUT_MS);
+      });
+
+      const updated = await Promise.race([updatePromise, timeoutPromise]) as any;
+
       const identifier = updated.nomorNcx || updated.idKendala || nomorNc;
       return ApiResponseHelper.success(
         c,
@@ -224,6 +325,15 @@ export class SyncController {
       );
     } catch (error: any) {
       logger.error('Update survey error:', error);
+
+      if (error.message?.includes('timeout')) {
+        return c.json({
+          success: true,
+          message: 'Update processing - may take a moment to sync to sheets',
+          data: { status: 'processing' }
+        }, 202);
+      }
+
       if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
@@ -236,12 +346,36 @@ export class SyncController {
       const user = c.get('user') as TokenPayload | undefined;
       const username = user?.name || user?.username || 'User';
       const nomorNc = c.req.param('nomorNcx');
-      const existing = await this.dashboardService.getDashboardDataByNomorNc(nomorNc);
+
+
+      const TIMEOUT_MS = 8000;
+
+      const existingPromise = this.dashboardService.getDashboardDataByNomorNc(nomorNc);
+      const existing = await Promise.race([
+        existingPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Fetch timeout')), 3000))
+      ]) as any;
+
       const identifier = existing.nomorNcx || existing.idKendala || nomorNc;
-      await this.adminService.deleteSurvey(nomorNc);
+
+      const deletePromise = this.adminService.deleteSurvey(nomorNc);
+      await Promise.race([
+        deletePromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Delete timeout')), TIMEOUT_MS))
+      ]);
+
       return ApiResponseHelper.success(c, null, `${username} successfully deleted ${identifier}`);
     } catch (error: any) {
       logger.error('Delete survey error:', error);
+
+      if (error.message?.includes('timeout')) {
+        return c.json({
+          success: true,
+          message: 'Delete processing - may take a moment to sync to sheets',
+          data: { status: 'processing' }
+        }, 202);
+      }
+
       if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
@@ -255,9 +389,9 @@ export class SyncController {
       const username = user?.name || user?.username || 'User';
       const idKendala = c.req.param('idKendala');
       const body = await c.req.json<{ tanggalInput: string }>();
-      
+
       await this.adminService.updateTanggalInput(idKendala, body.tanggalInput);
-      
+
       return ApiResponseHelper.success(
         c,
         null,

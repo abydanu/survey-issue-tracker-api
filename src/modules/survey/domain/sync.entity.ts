@@ -1,12 +1,3 @@
-import type {
-  JenisKendala,
-  PlanTematik,
-  StatusJt,
-  StatusUsulan,
-  StatusInstalasi,
-  Keterangan,
-} from "../../../generated/prisma/client.js";
-
 export interface Survey {
   id?: string;
   no: string;
@@ -20,25 +11,25 @@ export interface Survey {
   namaPelanggan?: string | null;
   latitude?: string | null;
   longitude?: string | null;
-  jenisKendala?: JenisKendala | null;
-  pltTemuan?: PlanTematik | null;
+  jenisKendala?: string | null;
+  pltTemuan?: string | null;
   rabHldSummary?: number | null;
   ihld?: number | null;
-  statusUsulan?: StatusUsulan | null;
+  statusUsulan?: string | null;
   statusIhld?: string | null;
   idEprop?: string | null;
-  statusInstalasi?: StatusInstalasi | null;
-  keterangan?: Keterangan | null;
+  statusInstalasi?: string | null;
+  keterangan?: string | null;
   newSc?: string | null;
 
-  statusJt?: StatusJt | null;
+  statusJt?: string | null;
   c2r?: number | null;
   nomorNcx?: string | null;
   alamat?: string | null;
   jenisLayanan?: string | null;
   nilaiKontrak?: bigint | null;
   ihldLop?: number | null;
-  planTematik?: PlanTematik | null;
+  planTematik?: string | null;
   rabHldDetail?: bigint | null;
   rabSurvey?: bigint | null;
   noNde?: string | null;

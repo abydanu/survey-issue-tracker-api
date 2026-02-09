@@ -9,7 +9,6 @@ import {
   getSyncStatusRoute,
   syncFromSheetsRoute,
   updateSurveyRoute,
-  updateTanggalInputRoute,
   deleteSurveyRoute
 } from './sync.openapi.js';
 import { authMiddleware, adminMiddleware } from '../../../shared/middlewares/auth.middleware.js';
@@ -57,7 +56,6 @@ export const createSyncRoutes = (
   adminApp.use('*', adminMiddleware());
 
   adminApp.openapi(updateSurveyRoute, adminController.updateSurvey as any);
-  adminApp.openapi(updateTanggalInputRoute, adminController.updateTanggalInput as any);
   adminApp.openapi(deleteSurveyRoute, adminController.deleteSurvey as any);
 
   const app = new OpenAPIHono({

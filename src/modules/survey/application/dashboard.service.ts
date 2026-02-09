@@ -298,8 +298,16 @@ export class StatsService {
       select: {
         masterData: {
           select: {
-            statusUsulan: true,
-            statusInstalasi: true,
+            statusUsulan: {
+              select: {
+                value: true,
+              },
+            },
+            statusInstalasi: {
+              select: {
+                value: true,
+              },
+            },
           },
         },
       },
@@ -311,8 +319,8 @@ export class StatsService {
     let totalApproved = 0;
 
     for (const s of surveys) {
-      const statusUsulan = s.masterData?.statusUsulan;
-      const statusInstalasi = s.masterData?.statusInstalasi as any;
+      const statusUsulan = s.masterData?.statusUsulan?.value;
+      const statusInstalasi = s.masterData?.statusInstalasi?.value;
 
       if (
         statusUsulan &&
@@ -322,7 +330,8 @@ export class StatsService {
         totalPending++;
       }
 
-      if (statusInstalasi === "5 GOLIVE" || statusInstalasi === "GO_LIVE") {
+      // Count GO_LIVE based on statusInstalasi enum value
+      if (statusInstalasi === "GO_LIVE") {
         totalGoLive++;
       }
 

@@ -1,81 +1,34 @@
 import type { EnumValues } from '../domain/enum.entity.js';
-import { SyncPrismaRepository } from '../infrastructure/sync.prisma.repository.js';
+import { EnumValueService } from './enum-value.service.js';
 
 export class EnumService {
-  constructor(private syncRepo?: SyncPrismaRepository) { }
+  private enumValueService: EnumValueService;
 
-  async getFilterEnums(): Promise<EnumValues> {
-    if (this.syncRepo) {
-
-      return await this.getEnumsFromDatabase();
-    }
-
-
-    return this.getHardcodedEnums();
+  constructor() {
+    this.enumValueService = new EnumValueService();
   }
 
-  private async getEnumsFromDatabase(): Promise<EnumValues> {
+  async getFilterEnums(): Promise<EnumValues> {
     try {
-
-      if (!this.syncRepo || !this.syncRepo.prisma) {
-        console.warn('SyncRepo or Prisma not available, falling back to hardcoded enums');
-        return this.getHardcodedEnums();
-      }
-
-
-      const [
-        jenisKendalaResults,
-        planTematikResults,
-        statusUsulanResults,
-        statusInstalasiResults,
-        keteranganResults,
-        statusJtResults
-      ] = await Promise.all([
-        this.syncRepo.prisma.newBgesB2BOlo.findMany({
-          select: { jenisKendala: true },
-          where: { jenisKendala: { not: null } },
-          distinct: ['jenisKendala']
-        }),
-        this.syncRepo.prisma.newBgesB2BOlo.findMany({
-          select: { planTematik: true },
-          where: { planTematik: { not: null } },
-          distinct: ['planTematik']
-        }),
-        this.syncRepo.prisma.newBgesB2BOlo.findMany({
-          select: { statusUsulan: true },
-          where: { statusUsulan: { not: null } },
-          distinct: ['statusUsulan']
-        }),
-        this.syncRepo.prisma.newBgesB2BOlo.findMany({
-          select: { statusInstalasi: true },
-          where: { statusInstalasi: { not: null } },
-          distinct: ['statusInstalasi']
-        }),
-        this.syncRepo.prisma.newBgesB2BOlo.findMany({
-          select: { keterangan: true },
-          where: { keterangan: { not: null } },
-          distinct: ['keterangan']
-        }),
-        this.syncRepo.prisma.ndeUsulanB2B.findMany({
-          select: { statusJt: true },
-          where: { statusJt: { not: null } },
-          distinct: ['statusJt']
-        })
-      ]);
-
+      const enums = await this.enumValueService.getAllEnums();
+      
+      // Convert to the old format for backward compatibility
       return {
-        jenisKendala: jenisKendalaResults.map((r: { jenisKendala: any; }) => r.jenisKendala!).sort(),
-        planTematik: planTematikResults.map((r: { planTematik: any; }) => r.planTematik!).sort(),
-        statusUsulan: statusUsulanResults.map((r: { statusUsulan: any; }) => r.statusUsulan!).sort(),
-        statusInstalasi: statusInstalasiResults.map((r: { statusInstalasi: any; }) => r.statusInstalasi!).sort(),
-        keterangan: keteranganResults.map((r: { keterangan: any; }) => r.keterangan!).sort(),
-        statusJt: statusJtResults.map((r: { statusJt: any; }) => r.statusJt!).sort()
+        jenisKendala: enums.JenisKendala.map(e => e.value),
+        planTematik: enums.PlanTematik.map(e => e.value),
+        statusUsulan: enums.StatusUsulan.map(e => e.value),
+        statusInstalasi: enums.StatusInstalasi.map(e => e.value),
+        keterangan: enums.Keterangan.map(e => e.value),
+        statusJt: enums.StatusJt.map(e => e.value),
       };
     } catch (error) {
-      console.error('Error fetching enums from database:', error);
-
+      console.error('Error fetching enums from EnumValueService:', error);
       return this.getHardcodedEnums();
     }
+  }
+
+  async getAllEnums() {
+    return this.enumValueService.getAllEnums();
   }
 
   private getHardcodedEnums(): EnumValues {
@@ -157,6 +110,7 @@ export class EnumService {
         'GOLIVE',
         'INPUT_PAKET_LAIN',
         'LANJUT_BATCH_3',
+        'LANJUT_BATCH_4',
         'NJKI_BELUM_LENGKAP',
         'NOT_APPROVE',
         'REVENUE_KURANG',
