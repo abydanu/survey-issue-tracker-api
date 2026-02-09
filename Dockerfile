@@ -1,4 +1,4 @@
-FROM oven/bun:1.1.29
+FROM oven/bun:1.1.29-node22
 
 WORKDIR /app
 
@@ -8,7 +8,6 @@ RUN bun install
 COPY . .
 
 ENV NODE_ENV=production
-
-EXPOSE 5000
+EXPOSE 3000
 
 CMD ["bun", "run", "prod"]
