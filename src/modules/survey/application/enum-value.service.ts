@@ -324,4 +324,150 @@ export class EnumValueService {
       .map(word => word.charAt(0) + word.slice(1).toLowerCase())
       .join(' ');
   }
+
+  /**
+   * Auto-update displayName from Google Sheets format
+   * This will scan sheets and update displayName for all enum values
+   */
+  async autoUpdateDisplayNamesFromSheets(): Promise<{
+    success: boolean;
+    message: string;
+    updated: Array<{ enumType: string; value: string; oldDisplayName: string | null; newDisplayName: string }>;
+  }> {
+    try {
+      logger.info('Starting auto-update displayNames from Google Sheets...');
+
+      const updated: Array<{ enumType: string; value: string; oldDisplayName: string | null; newDisplayName: string }> = [];
+
+      // Read RAW data from sheets (without normalization)
+      const rawSummaryRows = await this.googleSheets.readRawSummaryRows();
+      const rawDetailRows = await this.googleSheets.readRawDetailRows();
+
+      // Map to track: normalized value -> original sheet format
+      const displayNameMap = new Map<string, Map<string, string>>(); // enumType -> (value -> displayName)
+
+      // Process summary data (raw rows)
+      for (const row of rawSummaryRows) {
+        // StatusJt (column B / index 1)
+        if (row[1]) {
+          const rawValue = String(row[1]).trim();
+          const normalized = this.normalizeEnumValue(rawValue);
+          if (normalized && rawValue) {
+            if (!displayNameMap.has('StatusJt')) {
+              displayNameMap.set('StatusJt', new Map());
+            }
+            displayNameMap.get('StatusJt')!.set(normalized, rawValue);
+          }
+        }
+      }
+
+      // Process detail data (raw rows)
+      for (const row of rawDetailRows) {
+        // JenisKendala (column L / index 11)
+        if (row[11]) {
+          const rawValue = String(row[11]).trim();
+          const normalized = this.normalizeEnumValue(rawValue);
+          if (normalized && rawValue) {
+            if (!displayNameMap.has('JenisKendala')) {
+              displayNameMap.set('JenisKendala', new Map());
+            }
+            displayNameMap.get('JenisKendala')!.set(normalized, rawValue);
+          }
+        }
+
+        // PlanTematik (column M / index 12)
+        if (row[12]) {
+          const rawValue = String(row[12]).trim();
+          const normalized = this.normalizeEnumValue(rawValue);
+          if (normalized && rawValue) {
+            if (!displayNameMap.has('PlanTematik')) {
+              displayNameMap.set('PlanTematik', new Map());
+            }
+            displayNameMap.get('PlanTematik')!.set(normalized, rawValue);
+          }
+        }
+
+        // StatusUsulan (column P / index 15)
+        if (row[15]) {
+          const rawValue = String(row[15]).trim();
+          const normalized = this.normalizeEnumValue(rawValue);
+          if (normalized && rawValue) {
+            if (!displayNameMap.has('StatusUsulan')) {
+              displayNameMap.set('StatusUsulan', new Map());
+            }
+            displayNameMap.get('StatusUsulan')!.set(normalized, rawValue);
+          }
+        }
+
+        // StatusInstalasi (column S / index 18)
+        if (row[18]) {
+          const rawValue = String(row[18]).trim();
+          const normalized = this.normalizeStatusInstalasi(rawValue);
+          if (normalized && rawValue) {
+            if (!displayNameMap.has('StatusInstalasi')) {
+              displayNameMap.set('StatusInstalasi', new Map());
+            }
+            displayNameMap.get('StatusInstalasi')!.set(normalized, rawValue);
+          }
+        }
+
+        // Keterangan (column T / index 19)
+        if (row[19]) {
+          const rawValue = String(row[19]).trim();
+          const normalized = this.normalizeEnumValue(rawValue);
+          if (normalized && rawValue) {
+            if (!displayNameMap.has('Keterangan')) {
+              displayNameMap.set('Keterangan', new Map());
+            }
+            displayNameMap.get('Keterangan')!.set(normalized, rawValue);
+          }
+        }
+      }
+
+      // Update database
+      for (const [enumType, valueMap] of displayNameMap.entries()) {
+        for (const [value, displayName] of valueMap.entries()) {
+          const existing = await prisma.enumValue.findUnique({
+            where: {
+              enumType_value: {
+                enumType,
+                value,
+              },
+            },
+          });
+
+          if (existing && existing.displayName !== displayName) {
+            await prisma.enumValue.update({
+              where: { id: existing.id },
+              data: { displayName },
+            });
+
+            updated.push({
+              enumType,
+              value,
+              oldDisplayName: existing.displayName,
+              newDisplayName: displayName,
+            });
+
+            logger.info(`Updated displayName for ${enumType}.${value}: "${existing.displayName}" -> "${displayName}"`);
+          }
+        }
+      }
+
+      const message = updated.length > 0
+        ? `Updated ${updated.length} displayNames from Google Sheets`
+        : 'No displayNames needed updating';
+
+      logger.info(message);
+
+      return {
+        success: true,
+        message,
+        updated,
+      };
+    } catch (error: any) {
+      logger.error({ error }, 'Error auto-updating displayNames from sheets');
+      throw new Error(`Failed to auto-update displayNames: ${error.message}`);
+    }
+  }
 }

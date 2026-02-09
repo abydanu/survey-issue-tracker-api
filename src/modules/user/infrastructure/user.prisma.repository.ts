@@ -10,17 +10,17 @@ export class UserPrismaRepository implements IUserRepository {
   async findAll(query: UserQuery): Promise<{ data: User[]; total: number }> {
     const page = (query.page && typeof query.page === 'number' && query.page > 0) ? query.page : 1;
     const limit = (query.limit && typeof query.limit === 'number' && query.limit > 0) ? query.limit : 10;
-    
+
     const where = query.search && query.search.trim()
-    ? {
-      OR: [
-        { username: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
-        { name: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
-        { email: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
-      ],
-    }
-    : undefined;
-    const [ data, total ] = await Promise.all([
+      ? {
+        OR: [
+          { username: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
+          { name: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
+          { email: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
+        ],
+      }
+      : undefined;
+    const [data, total] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -74,14 +74,14 @@ export class UserPrismaRepository implements IUserRepository {
 
   async update(id: string, data: UpdateUserDto, currentToken?: string): Promise<User> {
     const updateData: any = {};
-  
+
     if (data.username) updateData.username = data.username;
     if (data.email !== undefined) updateData.email = data.email || null;
     if (data.name) updateData.name = data.name;
     if (data.role) updateData.role = data.role;
-    
+
     let passwordChanged = false;
-    
+
     if (data.oldPassword && data.newPassword) {
       const user = await this.findById(id);
       if (!user) {
@@ -94,19 +94,19 @@ export class UserPrismaRepository implements IUserRepository {
       updateData.password = await bcrypt.hash(data.newPassword, 10);
       passwordChanged = true;
     }
-  
+
     const user = await prisma.user.update({
       where: { id },
       data: updateData,
     });
-  
+
     if (passwordChanged) {
       await this.clearUserSessions(id);
     }
-  
+
     return user as User;
   }
-  
+
   private async clearUserSessions(userId: string): Promise<void> {
     try {
       await prisma.session.deleteMany({
@@ -120,8 +120,15 @@ export class UserPrismaRepository implements IUserRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await prisma.user.delete({
-      where: { id },
-    });
+    try {
+      await prisma.user.delete({
+        where: { id },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new Error('User tidak ditemukan');
+      }
+      throw error;
+    }
   }
 }

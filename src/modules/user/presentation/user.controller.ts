@@ -85,6 +85,8 @@ export class UserController {
       const id = c.req.param("id");
       const body = await c.req.json<UpdateUserDto>();
 
+      logger.info({ userId: id, updateData: { ...body, oldPassword: body.oldPassword ? '***' : undefined, newPassword: body.newPassword ? '***' : undefined } }, 'Update user request');
+
       const isPasswordChange = body.oldPassword && body.newPassword;
       const isSelfUpdate = currentUser.userId === id;
 
@@ -110,7 +112,11 @@ export class UserController {
         `User ${user.name} successfully updated`
       );
     } catch (error: any) {
-      logger.error("Update user error:", error);
+      logger.error({ 
+        userId: c.req.param("id"),
+        message: error.message, 
+        stack: error.stack 
+      }, 'Update user error');
 
       if (error.message?.includes("not found")) {
         return ApiResponseHelper.notFound(c, "User not found");
@@ -130,7 +136,8 @@ export class UserController {
 
       return ApiResponseHelper.error(
         c,
-        error.message || "Failed to update user"
+        error.message || "Failed to update user",
+        400
       );
     }
   };
@@ -138,16 +145,26 @@ export class UserController {
   deleteUser = async (c: Context) => {
     try {
       const id = c.req.param("id");
+      
+      logger.info({ userId: id }, 'Delete user request');
+      
       const deletedUser = await this.userService.deleteUser(id);
-      await this.userService.deleteUser(id);
+      
+      logger.info({ userId: id, username: deletedUser.username }, 'User deleted successfully');
+      
       return ApiResponseHelper.success(
         c,
         null,
         `User ${deletedUser.name} successfully deleted`
       );
     } catch (error: any) {
-      logger.error("Delete user error:", error);
-      if (error.message?.includes("not found")) {
+      logger.error({ 
+        userId: c.req.param("id"),
+        message: error.message, 
+        stack: error.stack 
+      }, 'Delete user error');
+      
+      if (error.message?.includes("not found") || error.message?.includes("tidak ditemukan")) {
         return ApiResponseHelper.notFound(c, "User not found");
       }
       return ApiResponseHelper.error(

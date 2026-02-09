@@ -39,17 +39,17 @@ export const UpdateUserRequestSchema = z.object({
     example: 'johndoe',
     description: 'Username minimal 3 karakter, maksimal 50 karakter'
   }),
-  email: z.string().email().optional().openapi({
+  email: z.string().email().nullable().optional().openapi({
     example: 'john.updated@example.com',
-    description: 'Email address (optional)'
+    description: 'Email address (optional, bisa null)'
   }),
   oldPassword: z.string().min(3).optional().openapi({
     example: 'old123',
-    description: 'Password minimal 3 karakter'
+    description: 'Password lama (wajib jika ingin ganti password)'
   }),
   newPassword: z.string().min(3).optional().openapi({
     example: 'new123',
-    description: 'Password minimal 3 karakter'
+    description: 'Password baru (wajib jika ingin ganti password)'
   }),
   name: z.string().min(1).max(100).optional().openapi({
     example: 'John Doe Updated',
@@ -60,12 +60,19 @@ export const UpdateUserRequestSchema = z.object({
     description: 'Role user'
   }),
 }).refine(
-  (data) =>
-    (!data.oldPassword && !data.newPassword) ||
-    (data.oldPassword && data.newPassword),
+  (data) => {
+    const hasOldPassword = data.oldPassword !== undefined && data.oldPassword !== '';
+    const hasNewPassword = data.newPassword !== undefined && data.newPassword !== '';
+    
+    if (!hasOldPassword && !hasNewPassword) return true;
+    
+    if (hasOldPassword && hasNewPassword) return true;
+    
+    return false;
+  },
   {
-    message: 'Password lama dan password baru harus diisi bersamaan',
-    path: ['oldPassword', 'newPassword'],
+    message: 'Untuk ganti password, oldPassword dan newPassword harus diisi bersamaan',
+    path: ['oldPassword'],
   }
 );
 

@@ -52,7 +52,7 @@ async function main() {
         create: {
             username: "user",
             name: "Adi Kurniawan",
-            email: "itsniamid@gmail.com",
+            email: "aby.danu26@smk.belajar.id",
             password: userPassword,
             role: Role.USER
         },

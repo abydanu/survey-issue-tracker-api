@@ -79,13 +79,19 @@ export class UserService {
   }
 
   async deleteUser(id: string): Promise<User> {
+    logger.info({ userId: id }, 'Attempting to delete user');
+    
     const user = await this.userRepo.findById(id);
     if (!user) {
-      throw new Error('User not found');
+      logger.warn({ userId: id }, 'User not found for deletion');
+      throw new Error('User tidak ditemukan');
     }
 
+    logger.info({ userId: id, username: user.username }, 'User found, proceeding with deletion');
+    
     await this.userRepo.delete(id);
-    logger.info(`User deleted: ${user.name}`);
+    
+    logger.info({ userId: id, username: user.username }, 'User deleted successfully');
 
     return user;
   }

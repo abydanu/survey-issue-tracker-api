@@ -6,7 +6,6 @@ import {
   getChartProfitLossRoute,
   getChartProfitLossByMonthRoute,
   getStatsRoute,
-  getSyncStatusRoute,
   syncFromSheetsRoute,
   updateSurveyRoute,
   deleteSurveyRoute
@@ -45,7 +44,6 @@ export const createSyncRoutes = (
   syncApp.use('*', authMiddleware(authService));
   syncApp.use('*', adminMiddleware());
 
-  syncApp.openapi(getSyncStatusRoute, syncController.getSyncStatus as any);
   syncApp.openapi(syncFromSheetsRoute, syncController.syncFromSheets as any);
 
   const adminApp = new OpenAPIHono({

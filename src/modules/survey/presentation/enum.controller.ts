@@ -35,4 +35,22 @@ export class EnumController {
       return ApiResponseHelper.error(c, error.message || 'Failed to fetch all enums');
     }
   };
+
+
+  autoUpdateDisplayNames = async (c: Context) => {
+    try {
+      logger.info('Auto-updating displayNames from Google Sheets...');
+      
+      const result = await this.enumService.autoUpdateDisplayNamesFromSheets();
+      
+      return ApiResponseHelper.success(
+        c,
+        result,
+        result.message
+      );
+    } catch (error: any) {
+      logger.error({ message: error.message, stack: error.stack }, 'Auto-update displayNames error');
+      return ApiResponseHelper.error(c, error.message || 'Failed to auto-update displayNames');
+    }
+  };
 }

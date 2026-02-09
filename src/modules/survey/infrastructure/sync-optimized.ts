@@ -245,7 +245,7 @@ export async function autoSyncFromSheetsOptimized(
                     const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
                     if (planTematikId) masterEnumFields.planTematik = { connect: { id: planTematikId } };
                     
-                    const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
+                    const statusUsulanId = enumCache.get(`StatusUsulan:${summary.ulan}`);
                     if (statusUsulanId) masterEnumFields.statusUsulan = { connect: { id: statusUsulanId } };
                     
                     const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);

@@ -31,6 +31,10 @@ export class EnumService {
     return this.enumValueService.getAllEnums();
   }
 
+  async autoUpdateDisplayNamesFromSheets() {
+    return this.enumValueService.autoUpdateDisplayNamesFromSheets();
+  }
+
   private getHardcodedEnums(): EnumValues {
     return {
       jenisKendala: [

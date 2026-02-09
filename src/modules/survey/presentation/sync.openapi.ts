@@ -341,43 +341,6 @@ export const getChartProfitLossByMonthRoute = createRoute({
   },
 });
 
-export const getSyncStatusRoute = createRoute({
-  method: 'get',
-  path: '/',
-  tags: ['Sync'],
-  summary: 'Get sync log',
-  description: 'Mendapatkan status sinkronisasi terakhir (Admin only)',
-  security: [{ bearerAuth: [] }],
-  responses: {
-    200: {
-      description: 'Status sinkronisasi berhasil diambil',
-      content: {
-        'application/json': {
-          schema: ApiSuccessResponseSchema.extend({
-            data: z.object({
-              lastSync: z.object({
-                id: z.string(),
-                status: z.string(),
-                message: z.string().nullable(),
-                sheetName: z.string().nullable(),
-                syncedAt: z.string(),
-              }).nullable(),
-            }),
-          }),
-        },
-      },
-    },
-    401: {
-      description: 'Unauthorized',
-      content: {
-        'application/json': {
-          schema: ApiErrorResponseSchema,
-        },
-      },
-    },
-  },
-});
-
 export const syncFromSheetsRoute = createRoute({
   method: 'post',
   path: '/',

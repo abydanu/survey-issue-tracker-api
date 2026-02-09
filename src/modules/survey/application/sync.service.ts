@@ -33,6 +33,16 @@ export class SyncService {
     try {
       logger.info("Starting sync from Google Sheets...");
 
+      // Step 1: Auto-update displayNames from sheets first
+      logger.info("Auto-updating enum displayNames from Google Sheets...");
+      try {
+        await this.getEnumValueService().autoUpdateDisplayNamesFromSheets();
+        logger.info("Enum displayNames updated successfully");
+      } catch (enumError: any) {
+        logger.warn({ message: enumError.message }, "Failed to auto-update enum displayNames, continuing with sync...");
+      }
+
+      // Step 2: Proceed with normal sync
       const summaryData = await this.getGoogleSheets().readSummaryData();
       const detailData = await this.getGoogleSheets().readDetailData();
 
@@ -374,10 +384,13 @@ export class SyncService {
         `Successfully synced ${operation} operation for ${type} to Google Sheets`
       );
     } catch (error: any) {
-      logger.error(
-        `Error syncing ${operation} operation to Google Sheets:`,
-        error
-      );
+      logger.error({
+        message: error.message,
+        stack: error.stack,
+        operation,
+        type
+      }, `Error syncing ${operation} operation to Google Sheets`);
+      throw error;
     }
   }
 

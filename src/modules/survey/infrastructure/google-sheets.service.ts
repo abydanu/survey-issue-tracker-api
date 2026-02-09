@@ -70,6 +70,11 @@ export class GoogleSheetsService {
 
     this.summarySheetName = process.env.GOOGLE_SUMMARY_SHEET_NAME as string;
     this.detailSheetName = process.env.GOOGLE_DETAIL_SHEET_NAME as string;
+
+    // Initialize enum cache in background (don't block constructor)
+    this.loadEnumMappingFromDatabase().catch(() => {
+      // Silently fail, will use static mapping as fallback
+    });
   }
 
   private async ensureSheetConfigLoaded(): Promise<void> {
@@ -145,19 +150,22 @@ export class GoogleSheetsService {
 
       const dataRows = rows.slice(2);
 
-      return dataRows
-
-        .filter(
-          (row: any[]) =>
-            Array.isArray(row) &&
-            row.length >= 4 &&
-            String(row[3] ?? "").trim() !== ""
-        )
-        .map((row: any[], index: number) =>
-          this.mapRowToSummary(row, index + 3)
-        );
+      const results = [];
+      for (const [index, row] of dataRows.entries()) {
+        if (
+          Array.isArray(row) &&
+          row.length >= 4 &&
+          String(row[3] ?? "").trim() !== ""
+        ) {
+          results.push(await this.mapRowToSummary(row, index + 3));
+        }
+      }
+      return results;
     } catch (error: any) {
-      logger.error("Error reading summary data from Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack 
+      }, "Error reading summary data from Google Sheets");
       throw new Error(
         `Gagal membaca data dari Google Sheets: ${error.message}`
       );
@@ -221,37 +229,96 @@ export class GoogleSheetsService {
 
       const dataRows = rows.slice(2);
 
-      return dataRows
-        // PERBAIKAN: Filter baris yang benar-benar punya data (idKendala tidak kosong)
-        .filter(
-          (row: any[]) =>
-            Array.isArray(row) && 
-            row[4] && // Column E (index 4) = idKendala harus ada
-            String(row[4]).trim() !== "" &&
-            String(row[4]).trim() !== "-"
-        )
-        .map((row: any[], index: number) =>
-          this.mapRowToDetail(row, index + 3)
-        );
+      const results = [];
+      for (const [index, row] of dataRows.entries()) {
+        if (
+          Array.isArray(row) && 
+          row[4] && // Column E (index 4) = idKendala harus ada
+          String(row[4]).trim() !== "" &&
+          String(row[4]).trim() !== "-"
+        ) {
+          results.push(await this.mapRowToDetail(row, index + 3));
+        }
+      }
+      return results;
     } catch (error: any) {
-      logger.error("Error reading detail data from Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack 
+      }, "Error reading detail data from Google Sheets");
       throw new Error(
         `Gagal membaca data dari Google Sheets: ${error.message}`
       );
     }
   }
 
-  private normalizeEnumValue(input: unknown): string | null {
+  private async normalizeEnumValue(input: unknown, enumType?: string): Promise<string | null> {
     const raw = String(input ?? "").trim();
     if (!raw) return null;
+    
+    // Load mapping from database if needed
+    await this.loadEnumMappingFromDatabase();
+
+    // Try to get from database cache first (reverse mapping)
+    if (enumType && this.reverseEnumMappingCache.has(enumType)) {
+      const typeMapping = this.reverseEnumMappingCache.get(enumType)!;
+      if (typeMapping.has(raw)) {
+        return typeMapping.get(raw)!;
+      }
+    }
+
+    // Fallback to static mapping
+    const staticReverseMapping: Record<string, string> = {
+      // StatusUsulan
+      'Review SDI': 'REVIEW_SDI',
+      'Belum Input': 'BELUM_INPUT',
+      'Review Optima': 'REVIEW_OPTIMA',
+      'Review ED': 'REVIEW_ED',
+      'Cek SDI Regional': 'CEK_SDI_REGIONAL',
+      'Approved': 'APPROVED',
+      'Drop LOP': 'DROP_LOP',
+      'Konfirmasi Ulang': 'KONFIRMASI_ULANG',
+      
+      // StatusInstalasi
+      '1 Review': 'REVIEW',
+      '2 Survey': 'SURVEY',
+      '3 Instalasi': 'INSTALASI',
+      '4 Done Instalasi': 'DONE_INSTALASI',
+      '5 GOLIVE': 'GOLIVE',
+      '6 Cancel': 'CANCEL',
+      '7 Pending': 'PENDING',
+      '8 Kendala': 'KENDALA',
+      
+      // StatusJt
+      'APPROVE': 'APPROVE',
+      'Lanjut Batch 4': 'LANJUT_BATCH_4',
+      'LANJUT BATCH 3': 'LANJUT_BATCH_3',
+      'NOT APPROVE': 'NOT_APPROVE',
+      'DROP BY WITEL': 'DROP_BY_WITEL',
+      'DROP BY AM': 'DROP_BY_AM',
+      'REVENUE KURANG': 'REVENUE_KURANG',
+      'AKI TIDAK LAYAK': 'AKI_TIDAK_LAYAK',
+      'AANWIJZING': 'AANWIJZING',
+      'CANCEL PELANGGAN': 'CANCEL_PELANGGAN',
+      'INPUT PAKET LAIN': 'INPUT_PAKET_LAIN',
+      'GOLIVE': 'GOLIVE',
+      'INSTALL': 'INSTALL',
+      'MENUNGGU NDE TIF': 'MENUNGGU_NDE_TIF',
+    };
+
+    if (staticReverseMapping[raw]) {
+      return staticReverseMapping[raw];
+    }
+
+    // Final fallback: convert to uppercase with underscore
     return raw
       .toUpperCase()
-      .replace(/^\d+\s*/g, "")          
+      .replace(/^\d+\s*/g, "")
       .replace(/[^A-Z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
   }
 
-  private normalizeStatusInstalasi(input: unknown): string | null {
+  private async normalizeStatusInstalasi(input: unknown): Promise<string | null> {
     const raw = String(input ?? "").trim().toUpperCase();
     if (!raw) return null;
     
@@ -274,21 +341,166 @@ export class GoogleSheetsService {
     };
     
     const mapped = mappings[cleaned];
-    return mapped || this.normalizeEnumValue(cleaned);
+    return mapped || await this.normalizeEnumValue(cleaned);
   }
 
-  private pickEnum<T extends string>(
+  private async pickEnum<T extends string>(
     input: unknown,
     allowed: Set<string>
-  ): T | null {
-    const norm = this.normalizeEnumValue(input);
+  ): Promise<T | null> {
+    const norm = await this.normalizeEnumValue(input) as any;
     if (!norm) return null;
     return allowed.has(norm) ? (norm as T) : null;
   }
 
-  private denormalizeEnumValue(input: string | null | undefined): string {
+  private enumMappingCache: Map<string, Map<string, string>> = new Map();
+  private reverseEnumMappingCache: Map<string, Map<string, string>> = new Map();
+  private lastEnumCacheUpdate: number = 0;
+  private readonly ENUM_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private isLoadingEnumCache: boolean = false;
+
+  private async loadEnumMappingFromDatabase(): Promise<void> {
+    const now = Date.now();
+    
+    // Skip if cache is still fresh
+    if (now - this.lastEnumCacheUpdate < this.ENUM_CACHE_TTL) {
+      return;
+    }
+
+    // Skip if already loading (prevent concurrent loads)
+    if (this.isLoadingEnumCache) {
+      return;
+    }
+
+    this.isLoadingEnumCache = true;
+
+    try {
+      // Use the existing prisma instance instead of creating a new one
+      const { default: prisma } = await import('../../../infrastructure/database/prisma.js');
+
+      // Ensure connection is ready with a simple query
+      await prisma.$queryRaw`SELECT 1`;
+
+      const enumValues = await prisma.enumValue.findMany({
+        where: { isActive: true },
+        select: {
+          enumType: true,
+          value: true,
+          displayName: true,
+        },
+      });
+
+      // Clear old cache
+      this.enumMappingCache.clear();
+      this.reverseEnumMappingCache.clear();
+
+      // Build mapping cache
+      for (const enumValue of enumValues) {
+        const { enumType, value, displayName } = enumValue;
+        
+        // Skip if no displayName
+        if (!displayName) continue;
+
+        // Forward mapping (backend -> sheets)
+        if (!this.enumMappingCache.has(enumType)) {
+          this.enumMappingCache.set(enumType, new Map());
+        }
+        this.enumMappingCache.get(enumType)!.set(value, displayName);
+
+        // Reverse mapping (sheets -> backend)
+        if (!this.reverseEnumMappingCache.has(enumType)) {
+          this.reverseEnumMappingCache.set(enumType, new Map());
+        }
+        this.reverseEnumMappingCache.get(enumType)!.set(displayName, value);
+      }
+
+      this.lastEnumCacheUpdate = now;
+      logger.info(`Loaded ${enumValues.length} enum mappings from database`);
+    } catch (error: any) {
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        name: error.name 
+      }, 'Failed to load enum mapping from database');
+      // Don't throw, just continue with static mapping as fallback
+    } finally {
+      this.isLoadingEnumCache = false;
+    }
+  }
+
+  private async denormalizeEnumValue(input: string | null | undefined, enumType?: string): Promise<string> {
     if (!input) return "";
-    return String(input).replace(/_/g, " ").trim();
+    
+    const value = String(input).trim();
+    
+    // Load mapping from database if needed
+    await this.loadEnumMappingFromDatabase();
+
+    // Try to get from database cache first
+    if (enumType && this.enumMappingCache.has(enumType)) {
+      const typeMapping = this.enumMappingCache.get(enumType)!;
+      if (typeMapping.has(value)) {
+        return typeMapping.get(value)!;
+      }
+      // Try case-insensitive
+      const upperValue = value.toUpperCase();
+      for (const [key, val] of typeMapping.entries()) {
+        if (key.toUpperCase() === upperValue) {
+          return val;
+        }
+      }
+    }
+
+    // Fallback to static mapping for backward compatibility
+    const staticMapping: Record<string, string> = {
+      // StatusUsulan
+      'REVIEW_SDI': 'Review SDI',
+      'BELUM_INPUT': 'Belum Input',
+      'REVIEW_OPTIMA': 'Review Optima',
+      'REVIEW_ED': 'Review ED',
+      'CEK_SDI_REGIONAL': 'Cek SDI Regional',
+      'APPROVED': 'Approved',
+      'APPROVE': 'APPROVE',
+      'NOT_APPROVE': 'NOT APPROVE',
+      'DROP_LOP': 'Drop LOP',
+      'KONFIRMASI_ULANG': 'Konfirmasi Ulang',
+      
+      // StatusInstalasi
+      'REVIEW': '1 Review',
+      'SURVEY': '2 Survey',
+      'INSTALASI': '3 Instalasi',
+      'DONE_INSTALASI': '4 Done Instalasi',
+      'GOLIVE': '5 GOLIVE',
+      'GO_LIVE': '5 GOLIVE',
+      'CANCEL': '6 Cancel',
+      'PENDING': '7 Pending',
+      'KENDALA': '8 Kendala',
+      
+      // StatusJt
+      'LANJUT_BATCH_4': 'Lanjut Batch 4',
+      'LANJUT_BATCH_3': 'LANJUT BATCH 3',
+      'DROP_BY_WITEL': 'DROP BY WITEL',
+      'DROP_BY_AM': 'DROP BY AM',
+      'REVENUE_KURANG': 'REVENUE KURANG',
+      'AKI_TIDAK_LAYAK': 'AKI TIDAK LAYAK',
+      'AANWIJZING': 'AANWIJZING',
+      'CANCEL_PELANGGAN': 'CANCEL PELANGGAN',
+      'INPUT_PAKET_LAIN': 'INPUT PAKET LAIN',
+      'INSTALL': 'INSTALL',
+      'MENUNGGU_NDE_TIF': 'MENUNGGU NDE TIF',
+    };
+
+    if (staticMapping[value]) {
+      return staticMapping[value];
+    }
+
+    const upperValue = value.toUpperCase();
+    if (staticMapping[upperValue]) {
+      return staticMapping[upperValue];
+    }
+
+    // Final fallback: replace underscore with space
+    return value.replace(/_/g, " ").trim();
   }
 
   private normalizeNo(input: unknown, fallbackRowNumber: number): string {
@@ -328,7 +540,10 @@ export class GoogleSheetsService {
 
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
-      logger.error("Error finding summary row index:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack 
+      }, "Error finding summary row index");
       return null;
     }
   }
@@ -361,7 +576,11 @@ export class GoogleSheetsService {
       
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
-      logger.error("Error finding detail row index:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        idKendala 
+      }, "Error finding detail row index");
       return null;
     }
   }
@@ -410,10 +629,17 @@ export class GoogleSheetsService {
         });
       };
 
-      if (data.statusJt !== undefined)
-        setCell("B", this.denormalizeEnumValue(data.statusJt));
-      if (data.c2r !== undefined)
-        setCell("C", data.c2r?.toString?.() ?? data.c2r ?? "");
+      if (data.statusJt !== undefined) {
+        const value = await this.denormalizeEnumValue(data.statusJt, 'StatusJt');
+        setCell("B", value);
+      }
+      if (data.c2r !== undefined) {
+        // Format c2r as percentage (e.g., 0.85 -> "85%")
+        const c2rValue = data.c2r !== null && data.c2r !== undefined 
+          ? `${(Number(data.c2r) * 100).toFixed(0)}%`
+          : "";
+        setCell("C", c2rValue);
+      }
       if (data.nomorNcx !== undefined) {
         const nomorNcxValue = data.nomorNcx ?? "";
         setCell("D", nomorNcxValue);
@@ -434,8 +660,10 @@ export class GoogleSheetsService {
       if (data.namaOdp !== undefined) setCell("U", data.namaOdp ?? "");
       if (data.jarakOdp !== undefined)
         setCell("V", data.jarakOdp?.toString?.() ?? data.jarakOdp ?? "");
-      if (data.keterangan !== undefined)
-        setCell("W", this.denormalizeEnumValue(data.keterangan as any));
+      if (data.keterangan !== undefined) {
+        const value = await this.denormalizeEnumValue(data.keterangan as any, 'Keterangan');
+        setCell("W", value);
+      }
 
       if (updates.length === 0) {
         logger.info(
@@ -455,7 +683,11 @@ export class GoogleSheetsService {
       logger.info(`Updated summary row ${rowIndex} for no: ${data.no}`);
       return true;
     } catch (error: any) {
-      logger.error("Error updating summary row in Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        no: data.no 
+      }, "Error updating summary row in Google Sheets");
       throw new Error(
         `Gagal mengupdate data di Google Sheets: ${error.message}`
       );
@@ -497,7 +729,7 @@ export class GoogleSheetsService {
         return false;
       }
 
-      const fullRow = this.mapDetailToRow(data);
+      const fullRow = await this.mapDetailToRow(data);
       // Skip first element (column A) to preserve row numbers
       const rowDataToUpdate = fullRow.slice(1);
       
@@ -528,7 +760,11 @@ export class GoogleSheetsService {
       );
       return true;
     } catch (error: any) {
-      logger.error("Error updating detail row in Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        idKendala: data.idKendala 
+      }, "Error updating detail row in Google Sheets");
       throw new Error(
         `Gagal mengupdate data di Google Sheets: ${error.message}`
       );
@@ -538,7 +774,7 @@ export class GoogleSheetsService {
   async appendSummaryRow(data: SurveySummarySheetRow): Promise<boolean> {
     try {
       await this.ensureSheetConfigLoaded();
-      const row = this.mapSummaryToRow(data);
+      const row = await this.mapSummaryToRow(data);
       await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
         range: `${this.summarySheetName}!A:W`,
@@ -552,7 +788,11 @@ export class GoogleSheetsService {
       logger.info(`Appended summary row for no: ${data.no}`);
       return true;
     } catch (error: any) {
-      logger.error("Error appending summary row to Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        no: data.no 
+      }, "Error appending summary row to Google Sheets");
       throw new Error(
         `Gagal menambahkan data ke Google Sheets: ${error.message}`
       );
@@ -562,7 +802,7 @@ export class GoogleSheetsService {
   async appendDetailRow(data: NewBgesB2BOloRow): Promise<boolean> {
     try {
       await this.ensureSheetConfigLoaded();
-      const row = this.mapDetailToRow(data);
+      const row = await this.mapDetailToRow(data);
       await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
         range: `${this.detailSheetName}!A:U`,
@@ -576,7 +816,11 @@ export class GoogleSheetsService {
       logger.info(`Appended detail row for idKendala: ${data.idKendala || ""}`);
       return true;
     } catch (error: any) {
-      logger.error("Error appending detail row to Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        idKendala: data.idKendala 
+      }, "Error appending detail row to Google Sheets");
       throw new Error(
         `Gagal menambahkan data ke Google Sheets: ${error.message}`
       );
@@ -618,7 +862,11 @@ export class GoogleSheetsService {
       logger.info(`Deleted summary row ${rowIndex} for no: ${no}`);
       return true;
     } catch (error: any) {
-      logger.error("Error deleting summary row from Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        no 
+      }, "Error deleting summary row from Google Sheets");
       throw new Error(
         `Gagal menghapus data dari Google Sheets: ${error.message}`
       );
@@ -660,14 +908,18 @@ export class GoogleSheetsService {
       logger.info(`Deleted detail row ${rowIndex} for idKendala: ${idKendala}`);
       return true;
     } catch (error: any) {
-      logger.error("Error deleting detail row from Google Sheets:", error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        idKendala 
+      }, "Error deleting detail row from Google Sheets");
       throw new Error(
         `Gagal menghapus data dari Google Sheets: ${error.message}`
       );
     }
   }
 
-  private mapRowToSummary(row: any[], rowNumber: number): NdeUsulanB2BRow {
+  private async mapRowToSummary(row: any[], rowNumber: number): Promise<NdeUsulanB2BRow> {
     let c2r: number | null = null;
     if (row[2]) {
       const c2rStr = String(row[2]).replace(/%/g, "").replace(/,/g, "");
@@ -731,10 +983,7 @@ export class GoogleSheetsService {
         .trim()
         .replace(/^'/, ""),
 
-      statusJt: (() => {
-        const v = this.normalizeEnumValue(row[1]);
-        return v ? (v as any) : null;
-      })(),
+      statusJt: await this.normalizeEnumValue(row[1], 'StatusJt') as any,
       c2r,
       alamatInstalasi: row[9] ? String(row[9]).trim() : null,
       jenisLayanan: row[10] ? String(row[10]).trim() : null,
@@ -755,11 +1004,11 @@ export class GoogleSheetsService {
       planTematik: row[13] ? String(row[13]).trim() : null,
       rabHld,
       statusUsulan: row[17] ? String(row[17]).trim() : null,
-      statusInstalasi: this.normalizeStatusInstalasi(row[18]) as any
+      statusInstalasi: await this.normalizeStatusInstalasi(row[18]) as any
     };
   }
 
-  private mapRowToDetail(row: any[], rowNumber: number): NewBgesB2BOloRow {
+  private async mapRowToDetail(row: any[], rowNumber: number): Promise<NewBgesB2BOloRow> {
     let tglInputUsulan: Date | null = null;
     if (row[3]) {
       const dateStr = String(row[3]).trim();
@@ -847,17 +1096,17 @@ export class GoogleSheetsService {
       latitude: row[9] ? String(row[9]).trim() : null,
       longitude: row[10] ? String(row[10]).trim() : null,
 
-      jenisKendala: (this.normalizeEnumValue(row[11]) as any) ?? null,
-      planTematik: (this.normalizeEnumValue(row[12]) as any) ?? null,
+      jenisKendala: await this.normalizeEnumValue(row[11], 'JenisKendala') as any,
+      planTematik: await this.normalizeEnumValue(row[12], 'PlanTematik') as any,
 
       rabHld,
       ihldValue,
 
-      statusUsulan: (this.normalizeEnumValue(row[15]) as any) ?? null,
+      statusUsulan: await this.normalizeEnumValue(row[15], 'StatusUsulan') as any,
       statusIhld: row[16] ? String(row[16]).trim() : null,
       idEprop: row[17] ? String(row[17]).trim() : null,
-      statusInstalasi: this.normalizeStatusInstalasi(row[18]) as any,
-      keterangan: (this.normalizeEnumValue(row[19]) as any) ?? null,
+      statusInstalasi: await this.normalizeStatusInstalasi(row[18]) as any,
+      keterangan: await this.normalizeEnumValue(row[19], 'Keterangan') as any,
       newSc: row[20] ? String(row[20]).trim() : null,
 
       namaOdp: null,
@@ -870,11 +1119,16 @@ export class GoogleSheetsService {
     };
   }
 
-  private mapSummaryToRow(data: Partial<NdeUsulanB2BRow>): any[] {
+  private async mapSummaryToRow(data: Partial<NdeUsulanB2BRow>): Promise<any[]> {
+    // Format c2r as percentage (e.g., 0.85 -> "85%")
+    const c2rValue = data.c2r !== null && data.c2r !== undefined 
+      ? `${(Number(data.c2r) * 100).toFixed(0)}%`
+      : "0";
+    
     return [
       data.no || "",
-      this.denormalizeEnumValue(data.statusJt),
-      data.c2r?.toString() || "0",
+      await this.denormalizeEnumValue(data.statusJt, 'StatusJt'),
+      c2rValue,
       data.nomorNcx || "",
       data.datel || "",
       data.sto || "",
@@ -885,20 +1139,20 @@ export class GoogleSheetsService {
       data.jenisLayanan || "",
       data.nilaiKontrak?.toString() || "0",
       data.ihldLopId?.toString() || "0",
-      this.denormalizeEnumValue(data.planTematik),
+      await this.denormalizeEnumValue(data.planTematik, 'PlanTematik'),
       data.rabHld?.toString() || "0",
       data.rabSurvey?.toString() || "0",
       data.nomorNde || "",
-      this.denormalizeEnumValue(data.statusUsulan),
-      this.denormalizeEnumValue(data.statusInstalasi),
+      await this.denormalizeEnumValue(data.statusUsulan, 'StatusUsulan'),
+      await this.denormalizeEnumValue(data.statusInstalasi, 'StatusInstalasi'),
       data.progressJt || "",
       data.namaOdp || "",
       data.jarakOdp?.toString() || "0",
-      this.denormalizeEnumValue(data.keterangan),
+      await this.denormalizeEnumValue(data.keterangan, 'Keterangan'),
     ];
   }
 
-  private mapDetailToRow(data: Partial<NewBgesB2BOloRow>): any[] {
+  private async mapDetailToRow(data: Partial<NewBgesB2BOloRow>): Promise<any[]> {
     // Helper to format date as m/d/yyyy without timezone shift
     const formatDate = (date: Date | null | undefined): string => {
       if (!date) return "";
@@ -922,15 +1176,15 @@ export class GoogleSheetsService {
       data.namaPelanggan || "",
       data.latitude || "",
       data.longitude || "",
-      this.denormalizeEnumValue(data.jenisKendala),
-      this.denormalizeEnumValue(data.planTematik),
+      await this.denormalizeEnumValue(data.jenisKendala, 'JenisKendala'),
+      await this.denormalizeEnumValue(data.planTematik, 'PlanTematik'),
       data.rabHld?.toString() || "0",
       data.ihldValue?.toString() || "0",
-      this.denormalizeEnumValue(data.statusUsulan),
+      await this.denormalizeEnumValue(data.statusUsulan, 'StatusUsulan'),
       data.statusIhld || "",
       data.idEprop || "",
-      this.denormalizeEnumValue(data.statusInstalasi),
-      this.denormalizeEnumValue(data.keterangan),
+      await this.denormalizeEnumValue(data.statusInstalasi, 'StatusInstalasi'),
+      await this.denormalizeEnumValue(data.keterangan, 'Keterangan'),
       data.newSc || "",
     ];
   }

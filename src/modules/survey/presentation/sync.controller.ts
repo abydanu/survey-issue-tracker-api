@@ -186,12 +186,35 @@ export class SyncController {
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
+        let isClosed = false;
 
-        const sendEvent = (data: any) => {
+        const sendEvent = (data: any): boolean => {
+          if (isClosed) {
+            return false;
+          }
+          
           try {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-          } catch (err) {
-            logger.error({ err }, 'Failed to send event');
+            return true;
+          } catch (err: any) {
+            if (err.code === 'ERR_INVALID_STATE' || err.message?.includes('closed')) {
+              isClosed = true;
+              logger.warn('Stream closed by client');
+            } else {
+              logger.error({ err }, 'Failed to send event');
+            }
+            return false;
+          }
+        };
+
+        const closeController = () => {
+          if (!isClosed) {
+            try {
+              controller.close();
+              isClosed = true;
+            } catch (err) {
+              // Ignore close errors
+            }
           }
         };
 
@@ -214,7 +237,7 @@ export class SyncController {
             errors: 0
           };
 
-          while (!completed) {
+          while (!completed && !isClosed) {
             try {
               const result = await syncService.syncBatch(batch, batchSize);
 
@@ -233,7 +256,7 @@ export class SyncController {
                 result.completed;
 
               if (shouldSendProgress) {
-                sendEvent({
+                const sent = sendEvent({
                   type: 'progress',
                   data: {
                     totalProcessed: result.totalProcessed,
@@ -244,13 +267,15 @@ export class SyncController {
                   message: `⏳ Memproses... ${percentage}%`,
                   timestamp: new Date().toISOString()
                 });
+                
+                if (!sent) break; // Client disconnected
                 lastPercentage = percentage;
               }
 
               completed = result.completed;
               batch++;
 
-              if (!completed) {
+              if (!completed && !isClosed) {
                 await new Promise(resolve => setTimeout(resolve, 200));
               }
             } catch (batchError: any) {
@@ -265,6 +290,11 @@ export class SyncController {
                 throw new Error(`Too many errors (${totalStats.errors}), stopping sync`);
               }
             }
+          }
+
+          if (isClosed) {
+            logger.info('Sync interrupted: client disconnected');
+            return;
           }
 
           const endTime = Date.now();
@@ -285,25 +315,19 @@ export class SyncController {
             timestamp: new Date().toISOString()
           });
 
-          controller.close();
+          closeController();
         } catch (error: any) {
           logger.error({ error }, 'Sync stream error');
           
-          try {
+          if (!isClosed) {
             sendEvent({
               type: 'error',
               message: `❌ Sinkronisasi gagal: ${error.message || 'Terjadi kesalahan'}`,
               timestamp: new Date().toISOString()
             });
-          } catch (sendError) {
-            logger.error({ sendError }, 'Failed to send error event');
           }
           
-          try {
-            controller.close();
-          } catch (closeError) {
-            logger.error({ closeError }, 'Failed to close controller');
-          }
+          closeController();
         }
       }
     });
@@ -361,7 +385,11 @@ export class SyncController {
         `${username} successfully updated ${identifier}`
       );
     } catch (error: any) {
-      logger.error('Update survey error:', error);
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack,
+        nomorNc: c.req.param('nomorNcx')
+      }, 'Update survey error');
 
       if (error.message?.includes('timeout')) {
         return c.json({
@@ -374,7 +402,9 @@ export class SyncController {
       if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
-      return ApiResponseHelper.error(c, 'Failed to update survey');
+      
+      // Return error message dari service untuk debugging
+      return ApiResponseHelper.error(c, error.message || 'Failed to update survey');
     }
   };
 
@@ -401,7 +431,7 @@ export class SyncController {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Delete timeout')), TIMEOUT_MS))
       ]);
 
-      return ApiResponseHelper.success(c, null, `${username} successfully deleted ${identifier}`);
+      return ApiResponseHelper.success(c, null, `successfully deleted ${identifier}`);
     } catch (error: any) {
       logger.error('Delete survey error:', error);
 

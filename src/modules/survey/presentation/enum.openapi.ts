@@ -107,3 +107,47 @@ export const getAllEnumsRoute = createRoute({
     }
   }
 });
+
+
+export const autoUpdateDisplayNamesRoute = createRoute({
+  method: 'post',
+  path: '/auto-update-display-names',
+  tags: ['Enums'],
+  summary: 'Auto-update displayNames from Google Sheets',
+  description: 'Automatically scan Google Sheets and update displayName for all enum values (Admin only)',
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'DisplayNames updated successfully',
+      content: {
+        'application/json': {
+          schema: z.object({
+            success: z.boolean(),
+            message: z.string(),
+            data: z.object({
+              success: z.boolean(),
+              message: z.string(),
+              updated: z.array(z.object({
+                enumType: z.string(),
+                value: z.string(),
+                oldDisplayName: z.string().nullable(),
+                newDisplayName: z.string(),
+              })),
+            }),
+          }),
+        },
+      },
+    },
+    401: {
+      description: 'Unauthorized',
+      content: {
+        'application/json': {
+          schema: z.object({
+            success: z.boolean(),
+            message: z.string(),
+          }),
+        },
+      },
+    },
+  },
+});
