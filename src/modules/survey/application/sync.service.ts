@@ -155,8 +155,9 @@ export class SyncService {
       const startIndex = batchNumber * batchSize;
       const endIndex = Math.min(startIndex + batchSize, totalRecords);
       
-      // Check if completed
+      // Check if completed before processing
       if (startIndex >= totalRecords) {
+        logger.info(`Batch ${batchNumber} skipped: already completed`);
         return {
           processedInBatch: 0,
           totalProcessed: totalRecords,
@@ -168,17 +169,20 @@ export class SyncService {
       }
 
       // Split data into detail and summary for this batch
-      const detailBatchSize = Math.min(detailData.length - startIndex, batchSize);
-      const summaryStartIndex = Math.max(0, startIndex - detailData.length);
-      const summaryBatchSize = Math.max(0, Math.min(endIndex - detailData.length, summaryData.length) - summaryStartIndex);
+      let detailBatch: any[] = [];
+      let summaryBatch: any[] = [];
 
-      const detailBatch = detailBatchSize > 0 
-        ? detailData.slice(startIndex, startIndex + detailBatchSize)
-        : [];
-      
-      const summaryBatch = summaryBatchSize > 0
-        ? summaryData.slice(summaryStartIndex, summaryStartIndex + summaryBatchSize)
-        : [];
+      // Process detail first, then summary
+      if (startIndex < detailData.length) {
+        const detailEnd = Math.min(endIndex, detailData.length);
+        detailBatch = detailData.slice(startIndex, detailEnd);
+      }
+
+      if (endIndex > detailData.length) {
+        const summaryStart = Math.max(0, startIndex - detailData.length);
+        const summaryEnd = endIndex - detailData.length;
+        summaryBatch = summaryData.slice(summaryStart, summaryEnd);
+      }
 
       logger.info(`Processing batch ${batchNumber}: ${detailBatch.length} detail + ${summaryBatch.length} summary records`);
 
@@ -187,7 +191,7 @@ export class SyncService {
 
       const processedInBatch = detailBatch.length + summaryBatch.length;
       const totalProcessed = endIndex;
-      const remaining = totalRecords - totalProcessed;
+      const remaining = Math.max(0, totalRecords - totalProcessed);
       const completed = remaining === 0;
 
       logger.info(`Batch ${batchNumber} completed: ${processedInBatch} processed, ${remaining} remaining`);

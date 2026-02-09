@@ -12,6 +12,7 @@ import type {
   NewBgesB2BOloRow,
 } from '../domain/sync.entity.js';
 import { EnumValueService, type EnumType } from '../application/enum-value.service.js';
+import { autoSyncFromSheetsOptimized } from './sync-optimized.js';
 
 export class SyncPrismaRepository implements ISyncRepository {
   prisma = prismaClient;
@@ -23,7 +24,7 @@ export class SyncPrismaRepository implements ISyncRepository {
 
   private async findOrCreateEnumId(enumType: EnumType, value: string | null): Promise<string | null> {
     if (!value) return null;
-    // Ignore dash/minus as it's not a valid enum value
+
     if (value.trim() === '-') return null;
     try {
       return await this.enumValueService.findOrCreateEnumValue(enumType, value);
@@ -66,7 +67,7 @@ export class SyncPrismaRepository implements ISyncRepository {
     return result;
   }
 
-  // Process enum fields for NDE USULAN B2B (only statusJt and statusInstalasi use relations)
+
   private async processNdeEnumFields(data: any): Promise<{
     statusJtId?: string | null;
     statusInstalasiId?: string | null;
@@ -83,24 +84,24 @@ export class SyncPrismaRepository implements ISyncRepository {
     return result;
   }
 
-  // Helper method untuk backward compatibility - convert enum relations back to string values
+
   private convertEnumRelationsToStrings(data: any): any {
     if (!data) return data;
-    
+
     const result = { ...data };
-    
-    // Convert enum relations to string values for backward compatibility
+
+
     if (data.jenisKendala?.value) result.jenisKendala = data.jenisKendala.value;
     if (data.planTematik?.value) result.planTematik = data.planTematik.value;
     if (data.statusUsulan?.value) result.statusUsulan = data.statusUsulan.value;
     if (data.statusInstalasi?.value) result.statusInstalasi = data.statusInstalasi.value;
     if (data.keterangan?.value) result.keterangan = data.keterangan.value;
     if (data.statusJt?.value) result.statusJt = data.statusJt.value;
-    
+
     return result;
   }
 
-  // Temporary stub methods for backward compatibility - will be removed after full migration
+
   private validateJenisKendala(value: any): string | null {
     return value ? String(value).trim() : null;
   }
@@ -448,10 +449,10 @@ export class SyncPrismaRepository implements ISyncRepository {
       throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);
     }
 
-    // Prepare update data for NDE USULAN B2B
+
     const updateData: any = {};
-    
-    // Handle statusJt enum relation
+
+
     if (data.statusJt !== undefined) {
       if (data.statusJt === null) {
         updateData.statusJtId = null;
@@ -462,8 +463,8 @@ export class SyncPrismaRepository implements ISyncRepository {
         }
       }
     }
-    
-    // Handle statusInstalasi enum relation
+
+
     if (data.statusInstalasi !== undefined) {
       if (data.statusInstalasi === null) {
         updateData.statusInstalasiId = null;
@@ -474,7 +475,7 @@ export class SyncPrismaRepository implements ISyncRepository {
         }
       }
     }
-    
+
     if (data.c2r !== undefined) updateData.c2r = data.c2r !== null ? new Prisma.Decimal(data.c2r.toString()) : null;
     if (data.nomorNcx !== undefined) {
       if (data.nomorNcx === null || data.nomorNcx === '') {
@@ -501,14 +502,14 @@ export class SyncPrismaRepository implements ISyncRepository {
     if (data.namaOdp !== undefined) updateData.namaOdp = data.namaOdp;
     if (data.jarakOdp !== undefined) updateData.jarakOdp = data.jarakOdp ? new Prisma.Decimal(data.jarakOdp.toString()) : null;
     if (data.keteranganText !== undefined) updateData.keterangan = data.keteranganText;
-    
-    // Field string biasa (bukan enum relation di NDE USULAN B2B)
+
+
     if (data.statusUsulan !== undefined) updateData.statusUsulan = data.statusUsulan;
     if (data.planTematik !== undefined) updateData.planTematik = data.planTematik;
 
-    // LOGIC BARU: Sync status antara kedua tabel dalam transaction
+
     const survey = await this.prisma.$transaction(async (tx) => {
-      // Update NDE USULAN B2B
+
       const updatedSurvey = await tx.ndeUsulanB2B.update({
         where: { id: existing.id },
         data: updateData,
@@ -527,13 +528,13 @@ export class SyncPrismaRepository implements ISyncRepository {
         },
       });
 
-      // Sync status ke NEW BGES B2B jika status berubah
+
       if (data.statusJt !== undefined || data.statusUsulan !== undefined || data.statusInstalasi !== undefined) {
         const masterUpdateData: any = {
           lastSyncAt: new Date(),
         };
 
-        // Sync status dari NDE USULAN B2B ke NEW BGES B2B
+
         if (data.statusUsulan !== undefined) {
           const statusUsulanId = await this.findOrCreateEnumId('StatusUsulan', data.statusUsulan);
           if (statusUsulanId) {
@@ -547,8 +548,8 @@ export class SyncPrismaRepository implements ISyncRepository {
           }
         }
 
-        // Update master data jika ada perubahan status
-        if (Object.keys(masterUpdateData).length > 1) { // lebih dari lastSyncAt
+
+        if (Object.keys(masterUpdateData).length > 1) {
           await tx.newBgesB2BOlo.update({
             where: { idKendala: existing.nomorNcx },
             data: masterUpdateData,
@@ -577,7 +578,7 @@ export class SyncPrismaRepository implements ISyncRepository {
     });
   }
 
-  // Method baru untuk update tanggal input di NEW BGES B2B dengan format mm/dd/yyyy
+
   async updateTanggalInput(idKendala: string, tanggalInput: Date): Promise<void> {
     const existing = await this.prisma.newBgesB2BOlo.findUnique({
       where: { idKendala: idKendala.trim() },
@@ -598,7 +599,7 @@ export class SyncPrismaRepository implements ISyncRepository {
     console.log(`Updated tanggal input for ${idKendala}: ${tanggalInput.toLocaleDateString('en-US')}`);
   }
 
-  // Method untuk ambil data lengkap master data
+
   async getMasterDataByIdKendala(idKendala: string): Promise<any | null> {
     const masterData = await this.prisma.newBgesB2BOlo.findUnique({
       where: { idKendala: idKendala.trim() },
@@ -615,7 +616,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       return null;
     }
 
-    // Convert ke format yang sesuai dengan NewBgesB2BOloRow
+
     return {
       idKendala: masterData.idKendala,
       umur: masterData.umur,
@@ -659,7 +660,7 @@ export class SyncPrismaRepository implements ISyncRepository {
                 return Promise.resolve(null);
               }
 
-              // Process enum fields
+
               const enumFields = await this.processEnumFields(detail);
 
               const updateData: any = {
@@ -1288,307 +1289,13 @@ export class SyncPrismaRepository implements ISyncRepository {
     errors: number;
     batchesProcessed: number;
   }> {
-    const BATCH_SIZE = 15; // Reduced for Vercel transaction timeout (was 25)
-    const MAX_EXECUTION_TIME = 8500; // 8.5 seconds max - leave buffer for response
-    const startTime = Date.now();
-
-    let stats = {
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      errors: 0,
-      batchesProcessed: 0,
-    };
-
-    try {
-      console.log(`Starting optimized auto sync: ${detailData.length} detail + ${summaryData.length} summary records`);
-
-      // Step 1: Process detail data first (master data NEW BGES B2B & OLO)
-      if (detailData.length > 0) {
-        console.log(`Processing ${detailData.length} detail records...`);
-        const detailRows = detailData as NewBgesB2BOloRow[];
-
-        for (let i = 0; i < detailRows.length; i += BATCH_SIZE) {
-          if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-            console.warn(`Timeout approaching, stopping detail processing at batch ${Math.floor(i / BATCH_SIZE) + 1}`);
-            break;
-          }
-
-          const batch = detailRows.slice(i, i + BATCH_SIZE);
-          stats.batchesProcessed++;
-
-          try {
-            await this.prisma.$transaction(
-              async (tx) => {
-                const operations = batch.map(async (detail) => {
-                  if (!detail.idKendala || !detail.idKendala.trim()) {
-                    console.warn(`Skipping detail record with empty idKendala at row`);
-                    stats.skipped++;
-                    return null;
-                  }
-
-                  try {
-                    // Process enum fields
-                    const enumFields = await this.processEnumFields(detail);
-                    
-                    // Log tanggal input untuk debug
-                    if (detail.tglInputUsulan) {
-                      console.log(`Processing ${detail.idKendala} with tglInputUsulan: ${detail.tglInputUsulan}`);
-                    } else {
-                      console.warn(`Missing tglInputUsulan for ${detail.idKendala}`);
-                    }
-                    
-                    const result = await tx.newBgesB2BOlo.upsert({
-                      where: { idKendala: detail.idKendala.trim() },
-                      update: {
-                        syncStatus: 'SYNCED',
-                        lastSyncAt: new Date(),
-                        // PERBAIKAN: Selalu update tanggal input dari sheet (jangan skip dengan undefined)
-                        tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : undefined,
-                        umur: detail.umur !== undefined ? detail.umur : undefined,
-                        bln: detail.bln !== undefined ? detail.bln : undefined,
-                        jenisOrder: detail.jenisOrder !== undefined ? detail.jenisOrder : undefined,
-                        datel: detail.datel !== undefined ? detail.datel : undefined,
-                        sto: detail.sto !== undefined ? detail.sto : undefined,
-                        namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : undefined,
-                        latitude: detail.latitude !== undefined ? detail.latitude : undefined,
-                        longitude: detail.longitude !== undefined ? detail.longitude : undefined,
-                        ...enumFields,
-                        rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : undefined,
-                        ihldValue: detail.ihldValue !== undefined ? detail.ihldValue : undefined,
-                        statusIhld: detail.statusIhld !== undefined ? detail.statusIhld : undefined,
-                        idEprop: detail.idEprop !== undefined ? detail.idEprop : undefined,
-                        newSc: detail.newSc !== undefined ? detail.newSc : undefined,
-                        namaOdp: detail.namaOdp !== undefined ? detail.namaOdp : undefined,
-                        tglGolive: detail.tglGolive !== undefined ? detail.tglGolive : undefined,
-                        avai: detail.avai !== undefined ? detail.avai : undefined,
-                        used: detail.used !== undefined ? detail.used : undefined,
-                        isTotal: detail.isTotal !== undefined ? detail.isTotal : undefined,
-                        occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : undefined,
-                      },
-                      create: {
-                        idKendala: detail.idKendala.trim(),
-                        syncStatus: 'SYNCED',
-                        lastSyncAt: new Date(),
-                        // PERBAIKAN: Gunakan nilai dari sheet saat create
-                        tglInputUsulan: detail.tglInputUsulan ?? null,
-                        umur: detail.umur ?? null,
-                        bln: detail.bln ?? null,
-                        jenisOrder: detail.jenisOrder ?? null,
-                        datel: detail.datel ?? null,
-                        sto: detail.sto ?? null,
-                        namaPelanggan: detail.namaPelanggan ?? null,
-                        latitude: detail.latitude ?? null,
-                        longitude: detail.longitude ?? null,
-                        ...enumFields,
-                        rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
-                        ihldValue: detail.ihldValue ?? null,
-                        statusIhld: detail.statusIhld ?? null,
-                        idEprop: detail.idEprop ?? null,
-                        newSc: detail.newSc ?? null,
-                        namaOdp: detail.namaOdp ?? null,
-                        tglGolive: detail.tglGolive ?? null,
-                        avai: detail.avai ?? null,
-                        used: detail.used ?? null,
-                        isTotal: detail.isTotal ?? null,
-                        occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : null,
-                      },
-                    });
-                    stats.created++;
-                    return result;
-                  } catch (error: any) {
-                    if (error.code === 'P2002') {
-                      stats.updated++;
-                    } else {
-                      stats.errors++;
-                    }
-                    return null;
-                  }
-                });
-
-                await Promise.all(operations);
-              },
-              {
-                maxWait: 8000,  // Increased for Vercel
-                timeout: 10000, // 10 seconds max per transaction
-              }
-            );
-          } catch (batchError) {
-            console.error(`Error processing detail batch:`, batchError);
-            stats.errors += batch.length;
-          }
-        }
-      }
-
-      // Step 2: Process summary data (NDE USULAN B2B) - LOGIC BARU
-      if (summaryData.length > 0 && Date.now() - startTime < MAX_EXECUTION_TIME) {
-        console.log(`Processing ${summaryData.length} summary records with new logic...`);
-        const summaryRows = summaryData as NdeUsulanB2BRow[];
-
-        for (let i = 0; i < summaryRows.length; i += BATCH_SIZE) {
-          if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-            console.warn(`Timeout approaching, stopping summary processing at batch ${Math.floor(i / BATCH_SIZE) + 1}`);
-            break;
-          }
-
-          const batch = summaryRows.slice(i, i + BATCH_SIZE);
-          stats.batchesProcessed++;
-
-          try {
-            await this.prisma.$transaction(
-              async (tx) => {
-                const operations = batch.map(async (summary) => {
-                  const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
-                  const no = summary.no || (summary as any).NO;
-
-                  if (!no || !nomorNcx || !String(nomorNcx).trim()) {
-                    stats.skipped++;
-                    return null;
-                  }
-
-                  try {
-                    // LOGIC BARU: Cek apakah ada di NEW BGES B2B, jika tidak ada tetap sync
-                    const existingMaster = await tx.newBgesB2BOlo.findUnique({
-                      where: { idKendala: String(nomorNcx).trim() }
-                    });
-
-                    // Jika tidak ada di NEW BGES B2B, buat master data kosong dengan tanggal input null
-                    if (!existingMaster) {
-                      console.log(`Creating missing master data for nomorNcx: ${nomorNcx}`);
-                      
-                      // Process enum fields for master data
-                      const masterEnumFields = await this.processEnumFields(summary);
-                      
-                      await tx.newBgesB2BOlo.create({
-                        data: {
-                          idKendala: String(nomorNcx).trim(),
-                          syncStatus: 'SYNCED',
-                          lastSyncAt: new Date(),
-                          // Tanggal input kosong, bisa diedit nanti dan masuk ke sheet dengan format mm/dd/yyyy
-                          tglInputUsulan: null,
-                          // Field lain kosong, akan diisi dari NDE USULAN B2B
-                          datel: summary.datel ?? null,
-                          sto: summary.sto ?? null,
-                          namaPelanggan: summary.namaPelanggan ?? null,
-                          latitude: summary.latitude ?? null,
-                          longitude: summary.longitude ?? null,
-                          ...masterEnumFields,
-                          rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                        }
-                      });
-                    } else {
-                      // Jika ada, sync status dari NDE USULAN B2B ke NEW BGES B2B
-                      const masterEnumFields = await this.processEnumFields(summary);
-                      
-                      await tx.newBgesB2BOlo.update({
-                        where: { idKendala: String(nomorNcx).trim() },
-                        data: {
-                          syncStatus: 'SYNCED',
-                          lastSyncAt: new Date(),
-                          // Sync status dari NDE USULAN B2B - use existing values if new ones are null
-                          ...masterEnumFields,
-                          // Update data lain jika kosong di master
-                          datel: existingMaster.datel ?? summary.datel ?? null,
-                          sto: existingMaster.sto ?? summary.sto ?? null,
-                          namaPelanggan: existingMaster.namaPelanggan ?? summary.namaPelanggan ?? null,
-                          latitude: existingMaster.latitude ?? summary.latitude ?? null,
-                          longitude: existingMaster.longitude ?? null,
-                          rabHld: existingMaster.rabHld ?? (summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null),
-                        }
-                      });
-                    }
-
-                    // Process enum fields for NDE USULAN B2B (only statusJt and statusInstalasi)
-                    const ndeEnumFields = await this.processNdeEnumFields(summary);
-
-                    // Upsert NDE USULAN B2B dengan relasi ke master data
-                    const result = await tx.ndeUsulanB2B.upsert({
-                      where: { nomorNcx: String(nomorNcx).trim() },
-                      update: {
-                        syncStatus: 'SYNCED',
-                        lastSyncAt: new Date(),
-                        ...ndeEnumFields,
-                        c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
-                        alamatInstalasi: summary.alamatInstalasi ?? null,
-                        jenisLayanan: summary.jenisLayanan ?? null,
-                        nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null,
-                        rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : null,
-                        nomorNde: summary.nomorNde ?? null,
-                        progressJt: summary.progressJt ?? null,
-                        namaOdp: summary.namaOdp ?? null,
-                        jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : null,
-                        keterangan: summary.keterangan ?? null,
-                        datel: summary.datel ?? null,
-                        sto: summary.sto ?? null,
-                        namaPelanggan: summary.namaPelanggan ?? null,
-                        latitude: summary.latitude ?? null,
-                        longitude: summary.longitude ?? null,
-                        ihldLopId: summary.ihldLopId ?? null,
-                        planTematik: summary.planTematik ?? null,
-                        rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                        statusUsulan: summary.statusUsulan ?? null,
-                      },
-                      create: {
-                        no: no,
-                        nomorNcx: String(nomorNcx).trim(),
-                        syncStatus: 'SYNCED',
-                        lastSyncAt: new Date(),
-                        ...ndeEnumFields,
-                        c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
-                        alamatInstalasi: summary.alamatInstalasi ?? null,
-                        jenisLayanan: summary.jenisLayanan ?? null,
-                        nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null,
-                        rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : null,
-                        nomorNde: summary.nomorNde ?? null,
-                        progressJt: summary.progressJt ?? null,
-                        namaOdp: summary.namaOdp ?? null,
-                        jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : null,
-                        keterangan: summary.keterangan ?? null,
-                        datel: summary.datel ?? null,
-                        sto: summary.sto ?? null,
-                        namaPelanggan: summary.namaPelanggan ?? null,
-                        latitude: summary.latitude ?? null,
-                        longitude: summary.longitude ?? null,
-                        ihldLopId: summary.ihldLopId ?? null,
-                        planTematik: summary.planTematik ?? null,
-                        rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                        statusUsulan: summary.statusUsulan ?? null,
-                      },
-                    });
-                    stats.created++;
-                    return result;
-                  } catch (error: any) {
-                    if (error.code === 'P2002') {
-                      stats.updated++;
-                    } else {
-                      console.error(`Error processing summary ${nomorNcx}:`, error);
-                      stats.errors++;
-                    }
-                    return null;
-                  }
-                });
-
-                await Promise.all(operations);
-              },
-              {
-                maxWait: 8000,  // Increased for Vercel
-                timeout: 10000, // 10 seconds max per transaction
-              }
-            );
-          } catch (batchError) {
-            console.error(`Error processing summary batch:`, batchError);
-            stats.errors += batch.length;
-          }
-        }
-      }
-
-      const totalTime = Date.now() - startTime;
-      console.log(`Optimized auto sync completed in ${totalTime}ms:`, stats);
-
-      return stats;
-    } catch (error) {
-      console.error('Error in optimized auto sync:', error);
-      throw error;
-    }
+    // Use the optimized version that pre-processes enums outside transactions
+    return autoSyncFromSheetsOptimized(
+      this.prisma,
+      this.enumValueService,
+      summaryData,
+      detailData
+    );
   }
+
 }

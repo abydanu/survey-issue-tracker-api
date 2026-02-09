@@ -21,7 +21,13 @@ pool.on('error', (err) => {
 
 const adapter = new PrismaPg(pool);
 
-export const prisma = new PrismaClient({ adapter });
+export const prisma = new PrismaClient({ 
+  adapter,
+  transactionOptions: {
+    maxWait: 20000, // 20 seconds
+    timeout: 30000, // 30 seconds
+  },
+});
 
 (async () => {
   try {

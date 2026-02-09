@@ -40,7 +40,7 @@ async function main() {
         create: {
             username: "admin",
             name: "Alfonsus Siahaan",
-            email: "aby.danu26@smk.belajar.id",
+            email: "itsniamid@gmail.com",
             password: adminPassword,
             role: Role.ADMIN
         },
@@ -52,6 +52,7 @@ async function main() {
         create: {
             username: "user",
             name: "Adi Kurniawan",
+            email: "itsniamid@gmail.com",
             password: userPassword,
             role: Role.USER
         },

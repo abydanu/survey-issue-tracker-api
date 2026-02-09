@@ -15,7 +15,7 @@ export class AdminService {
   }
   private syncService: SyncService;
   private enumValueService: EnumValueService;
-  private skipSheetSync: boolean = false; // Flag for Vercel timeout protection
+  private skipSheetSync: boolean = false; 
 
   constructor(private syncRepo: ISyncRepository, options?: { skipSheetSync?: boolean }) {
     this.syncService = new SyncService(syncRepo);

@@ -58,15 +58,19 @@ export class AuthController {
   forgotPassword = async (c: Context) => {
     try {
       const body = await c.req.json<ForgotPasswordRequest>();
+      
+      logger.info({ email: body.email }, 'Forgot password request');
+      
       await this.authService.forgotPassword(body);
 
+      logger.info({ email: body.email }, 'OTP sent successfully');
       return ApiResponseHelper.success(
         c,
         null,
-        'The link to reset your password has been sent via email, please check your email'
+        'OTP sent, Please check your email.'
       );
     } catch (error: any) {
-      logger.error('Forgot password error:', error);
+      logger.error({ message: error.message, stack: error.stack }, 'Forgot password error');
       return ApiResponseHelper.error(c, error.message || 'Failed to process forgot password request');
     }
   };
@@ -74,16 +78,19 @@ export class AuthController {
   resendOtp = async (c: Context) => {
     try {
       const body = await c.req.json<ForgotPasswordRequest>();
+      
+      logger.info({ email: body.email }, 'Resend OTP request');
+      
       await this.authService.resendOtp(body);
 
+      logger.info({ email: body.email }, 'OTP resent successfully');
       return ApiResponseHelper.success(
         c,
         null,
-        'OTP has been resent to your email, please check your email'
+        "We've resent the OTP. Please check your inbox."
       );
     } catch (error: any) {
-      logger.error('Resend OTP error:', error);
-
+      logger.error({ message: error.message, stack: error.stack }, 'Resend OTP error');
 
       if (error.message.includes('wait at least')) {
         return ApiResponseHelper.error(c, error.message, undefined, 429);
@@ -96,15 +103,20 @@ export class AuthController {
   verifyOtp = async (c: Context) => {
     try {
       const body = await c.req.json<VerifyOtpRequest>();
+      
+      logger.info({ email: body.email, otp: body.otp.substring(0, 2) + '****' }, 'Verify OTP request');
+      
       const result = await this.authService.verifyOtp(body);
 
       if (result.valid) {
-        return ApiResponseHelper.success(c, { valid: true }, result.message);
+        logger.info({ email: body.email }, 'OTP verified successfully');
+        return ApiResponseHelper.success(c, { valid: true }, 'OTP verified successfully');
       } else {
+        logger.warn({ email: body.email, reason: result.message }, 'OTP verification failed');
         return ApiResponseHelper.error(c, result.message, undefined, 400);
       }
     } catch (error: any) {
-      logger.error('Verify OTP error:', error);
+      logger.error({ message: error.message, stack: error.stack }, 'Verify OTP error');
       return ApiResponseHelper.error(c, error.message || 'Failed to verify OTP');
     }
   };
@@ -112,11 +124,23 @@ export class AuthController {
   resetPassword = async (c: Context) => {
     try {
       const body = await c.req.json<ResetPasswordRequest>();
+      
+      logger.info({ 
+        email: body.email,
+        hasOtp: !!body.otp,
+        hasPassword: !!body.newPassword 
+      }, 'Reset password attempt');
+
       await this.authService.resetPassword(body);
 
+      logger.info({ email: body.email }, 'Password reset successful');
       return ApiResponseHelper.success(c, null, 'Password has been reset successfully');
     } catch (error: any) {
-      logger.error('Reset password error:', error);
+      logger.error({
+        message: error.message,
+        stack: error.stack
+      }, 'Reset password error');
+      
       return ApiResponseHelper.error(c, error.message || 'Failed to reset password');
     }
   };

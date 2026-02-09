@@ -217,10 +217,9 @@ export class AuthService {
   async resetPassword(request: ResetPasswordRequest): Promise<void> {
     const { email, otp, newPassword } = request;
 
-
     const otpVerification = await this.verifyOtp({ email, otp });
     if (!otpVerification.valid) {
-
+      logger.warn({ email, reason: otpVerification.message }, 'OTP verification failed:');
       const otpRecord = await this.authRepo.findPasswordResetOtp(otp);
       if (otpRecord) {
         await this.authRepo.incrementOtpAttempts(otpRecord.id);
@@ -228,31 +227,28 @@ export class AuthService {
       throw new Error(otpVerification.message);
     }
 
-
     const user = await this.authRepo.findUserByEmail(email);
     const otpRecord = await this.authRepo.findPasswordResetOtp(otp);
 
     if (!user || !otpRecord) {
+      logger.error( { email, hasUser: !!user, hasOtpRecord: !!otpRecord }, 'User or OTP record not found:');
       throw new Error('Invalid request');
     }
 
-
     const isSamePassword = await bcrypt.compare(newPassword, user.password);
     if (isSamePassword) {
-      throw new Error('New password cannot be the same as your current password');
+      logger.warn({ email }, 'New password same as old password:');
+      throw new Error('New password must be different');
     }
 
-
     const hashedPassword = await bcrypt.hash(newPassword, 12);
-
 
     await this.authRepo.updateUserPassword(user.id, hashedPassword);
     await this.authRepo.markPasswordResetOtpAsUsed(otpRecord.id);
 
-
     await this.authRepo.deleteAllUserSessions(user.id);
 
-    logger.info(`Password reset successfully for user: ${user.username}`);
+    logger.info(`Password reset successfully for user: ${user.username} (${email})`);
   }
 
   private generateOtp(): string {

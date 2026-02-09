@@ -188,15 +188,24 @@ export class SyncController {
         const encoder = new TextEncoder();
 
         const sendEvent = (data: any) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch (err) {
+            logger.error({ err }, 'Failed to send event');
+          }
         };
 
         try {
-          sendEvent({ type: 'start', message: 'Starting sync...' });
+          sendEvent({ 
+            type: 'start', 
+            message: '🔄 Memproses data dari Google Sheets...',
+            timestamp: new Date().toISOString()
+          });
 
           let batch = 0;
           const batchSize = 50;
           let completed = false;
+          let lastPercentage = 0;
 
           const totalStats = {
             created: 0,
@@ -206,67 +215,95 @@ export class SyncController {
           };
 
           while (!completed) {
-            sendEvent({
-              type: 'batch_start',
-              batch: batch + 1,
-              message: `Processing batch ${batch + 1}...`
-            });
+            try {
+              const result = await syncService.syncBatch(batch, batchSize);
 
-            const result = await syncService.syncBatch(batch, batchSize);
+              totalStats.created += result.stats.created;
+              totalStats.updated += result.stats.updated;
+              totalStats.skipped += result.stats.skipped;
+              totalStats.errors += result.stats.errors;
 
-            totalStats.created += result.stats.created;
-            totalStats.updated += result.stats.updated;
-            totalStats.skipped += result.stats.skipped;
-            totalStats.errors += result.stats.errors;
+              const percentage = result.totalRecords > 0
+                ? Math.round((result.totalProcessed / result.totalRecords) * 100)
+                : 0;
 
-            const percentage = result.totalRecords > 0
-              ? Math.round((result.totalProcessed / result.totalRecords) * 100)
-              : 0;
+              // Kirim progress update setiap kelipatan 25% atau batch terakhir
+              const shouldSendProgress = 
+                Math.floor(percentage / 25) > Math.floor(lastPercentage / 25) || 
+                result.completed;
 
-            sendEvent({
-              type: 'batch_complete',
-              batch: batch + 1,
-              data: {
-                processedInBatch: result.processedInBatch,
-                totalProcessed: result.totalProcessed,
-                totalRecords: result.totalRecords,
-                remaining: result.remaining,
-                percentage,
-                stats: result.stats,
-                totalStats
-              },
-              message: `Batch ${batch + 1} completed: ${result.processedInBatch} records (${percentage}%)`
-            });
+              if (shouldSendProgress) {
+                sendEvent({
+                  type: 'progress',
+                  data: {
+                    totalProcessed: result.totalProcessed,
+                    totalRecords: result.totalRecords,
+                    percentage,
+                    totalStats
+                  },
+                  message: `⏳ Memproses... ${percentage}%`,
+                  timestamp: new Date().toISOString()
+                });
+                lastPercentage = percentage;
+              }
 
-            completed = result.completed;
-            batch++;
+              completed = result.completed;
+              batch++;
 
-
-            if (!completed) {
-              await new Promise(resolve => setTimeout(resolve, 200));
+              if (!completed) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+              }
+            } catch (batchError: any) {
+              logger.error({ batchError, batch }, 'Error in batch');
+              totalStats.errors++;
+              
+              // Lanjutkan ke batch berikutnya jika ada error
+              batch++;
+              
+              // Jika error terlalu banyak, stop
+              if (totalStats.errors > 5) {
+                throw new Error(`Too many errors (${totalStats.errors}), stopping sync`);
+              }
             }
           }
 
           const endTime = Date.now();
           const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
+          const dateTime = new Date().toLocaleString('id-ID', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          });
 
           sendEvent({
             type: 'complete',
             data: {
-              totalBatches: batch,
               totalStats,
-              processingTime
+              processingTime,
+              syncedAt: dateTime
             },
-            message: `Sync completed! ${totalStats.created} created, ${totalStats.updated} updated`
+            message: `✅ Sinkronisasi selesai! ${totalStats.created} data baru, ${totalStats.updated} diupdate`,
+            timestamp: new Date().toISOString()
           });
 
           controller.close();
         } catch (error: any) {
-          sendEvent({
-            type: 'error',
-            message: error.message || 'Sync failed'
-          });
-          controller.close();
+          logger.error({ error }, 'Sync stream error');
+          
+          try {
+            sendEvent({
+              type: 'error',
+              message: `❌ Sinkronisasi gagal: ${error.message || 'Terjadi kesalahan'}`,
+              timestamp: new Date().toISOString()
+            });
+          } catch (sendError) {
+            logger.error({ sendError }, 'Failed to send error event');
+          }
+          
+          try {
+            controller.close();
+          } catch (closeError) {
+            logger.error({ closeError }, 'Failed to close controller');
+          }
         }
       }
     });

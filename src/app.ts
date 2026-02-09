@@ -49,11 +49,8 @@ export const createApp = () => {
       name: 'Survey Issue Tracking API',
       version: '1.0.0',
       status: 'running',
+      author: 'Aby Danu',
       documentation: '/docs',
-      endpoints: {
-        enums: '/api/enums',
-        specificEnum: '/api/enums/{enumName}'
-      }
     }, 'API is running');
   });
 
