@@ -1,7 +1,4 @@
-FROM node:22-alpine
-
-# install bun
-RUN npm install -g bun
+FROM oven/bun:1.3.9-alpine
 
 WORKDIR /app
 
@@ -10,7 +7,10 @@ RUN bun install
 
 COPY . .
 
-ENV NODE_ENV=production
-EXPOSE 5000
+# Generate Prisma client
+RUN bun x prisma generate --schema=./src/core/prisma/schema.prisma
 
-CMD ["bun", "run", "prod"]
+ENV NODE_ENV=production
+EXPOSE 8080
+
+CMD ["bun", "run", "start"]

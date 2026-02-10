@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "NODE_ENV=development bun --no-env-file --env-file .env.local --hot src/main.ts",
     "prod": "NODE_ENV=production bun --no-env-file --env-file .env.production src/main.ts",
-    "start": "NODE_ENV=production bun src/main.ts",
+    "start": "bun x prisma generate --schema=./src/core/prisma/schema.prisma && bun src/main.ts",
     "db:generate": "bun x prisma generate --schema=./src/core/prisma/schema.prisma",
     "db:push": "bun exec --no-env-file --env-file .env.local \"bun x prisma db push --schema=./src/core/prisma/schema.prisma\"",
     "db:reset": "bun exec --no-env-file --env-file .env.local \"bun x prisma db push --force-reset --schema=./src/core/prisma/schema.prisma\"",
@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/bun": "^1.3.8",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^6.4.14",

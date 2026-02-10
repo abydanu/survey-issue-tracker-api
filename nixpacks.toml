@@ -4,10 +4,5 @@ nixPkgs = ['bun']
 [phases.install]
 cmds = ['bun install']
 
-[phases.build]
-cmds = [
-  'bun x prisma generate --schema=./src/core/prisma/schema.prisma'
-]
-
 [start]
 cmd = 'bun run start'

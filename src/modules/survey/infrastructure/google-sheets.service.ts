@@ -10,21 +10,48 @@ import type {
 import fs from "fs";
 
 function loadGoogleCredentials(): Record<string, unknown> {
-  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
-
-  if (rawJson && rawJson.startsWith("{")) {
-    const credentials = JSON.parse(rawJson) as Record<string, unknown>;
-
-    if (typeof credentials.private_key === "string") {
-      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+  // Try base64 encoded JSON first
+  const base64Json = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64?.trim();
+  if (base64Json) {
+    try {
+      const decoded = Buffer.from(base64Json, 'base64').toString('utf-8');
+      const credentials = JSON.parse(decoded) as Record<string, unknown>;
+      
+      if (typeof credentials.private_key === "string") {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+      }
+      
+      return credentials;
+    } catch (error) {
+      throw new Error(`Failed to decode GOOGLE_SERVICE_ACCOUNT_BASE64: ${error}`);
     }
-
-    return credentials;
   }
 
-  const path =
-    process.env.GOOGLE_SERVICE_ACCOUNT_PATH?.trim() ||
-    (rawJson && !rawJson.startsWith("{") ? rawJson : null);
+  // Try raw JSON
+  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+  if (rawJson) {
+    try {
+      const credentials = JSON.parse(rawJson) as Record<string, unknown>;
+
+      if (typeof credentials.private_key === "string") {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+      }
+
+      return credentials;
+    } catch (parseError) {
+      // If parse fails, treat as file path
+      if (fs.existsSync(rawJson)) {
+        return JSON.parse(fs.readFileSync(rawJson, "utf-8")) as Record<
+          string,
+          unknown
+        >;
+      }
+      throw new Error(`Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON: ${parseError}`);
+    }
+  }
+
+  // Try file path from GOOGLE_SERVICE_ACCOUNT_PATH
+  const path = process.env.GOOGLE_SERVICE_ACCOUNT_PATH?.trim();
 
   if (path && fs.existsSync(path)) {
     return JSON.parse(fs.readFileSync(path, "utf-8")) as Record<
@@ -39,7 +66,7 @@ function loadGoogleCredentials(): Record<string, unknown> {
 
   throw new Error(
     "Google Service Account credentials not found. " +
-      "Set GOOGLE_SERVICE_ACCOUNT_JSON (raw JSON untuk Vercel) atau GOOGLE_SERVICE_ACCOUNT_PATH (path file untuk local)."
+      "Set GOOGLE_SERVICE_ACCOUNT_BASE64 (base64 encoded), GOOGLE_SERVICE_ACCOUNT_JSON (raw JSON), atau GOOGLE_SERVICE_ACCOUNT_PATH (file path)."
   );
 }
 
