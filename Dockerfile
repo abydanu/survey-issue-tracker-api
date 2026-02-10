@@ -7,7 +7,6 @@ RUN bun install
 
 COPY . .
 
-# Generate Prisma client
 RUN bun x prisma generate --schema=./src/core/prisma/schema.prisma
 
 ENV NODE_ENV=production
