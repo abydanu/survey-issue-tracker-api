@@ -228,18 +228,14 @@ export class SyncService {
     syncStats: {
       created: number;
       updated: number;
+      deleted: number;
       skipped: number;
       errors: number;
-    };
-    enumSync: {
-      processed: boolean;
-      newEnums: string[];
     };
     batchesProcessed: number;
   }> {
     try {
-      logger.info("Starting optimized automatic sync from Google Sheets...");
-
+      logger.info("Starting incremental sync from Google Sheets...");
 
       logger.info("Fetching data from Google Sheets...");
       const summaryData = await this.getGoogleSheets().readSummaryData();
@@ -249,33 +245,33 @@ export class SyncService {
 
       const totalRecords = summaryData.length + detailData.length;
 
-      // Step 2: Auto sync enums first (detect new enums from sheets)
-      logger.info("Auto-syncing enums from Google Sheets...");
-      let enumSyncResult = {
-        processed: false,
-        newEnums: [] as string[],
-      };
-
-      try {
-        const enumResult = await this.getEnumValueService().syncEnumsFromSheets();
-        enumSyncResult = {
-          processed: true,
-          newEnums: enumResult.newEnums.map(e => `${e.enumType}.${e.value}`),
-        };
-        logger.info(`Enum sync completed: ${enumSyncResult.newEnums.length} new enums added`);
-      } catch (enumError: any) {
-        logger.warn(`Enum sync failed (non-blocking): ${enumError.message}`);
-        // Continue with data sync even if enum sync fails
-      }
-
-      // Step 3: Optimized batch processing with timeout management
-      const syncStats = await this.syncRepo.autoSyncFromSheets(
+      // Use incremental sync (only new/updated/deleted)
+      const { incrementalSyncFromSheets } = await import('../infrastructure/sync-incremental.js');
+      
+      const syncStats = await incrementalSyncFromSheets(
+        prisma,
+        this.getEnumValueService(),
         summaryData,
         detailData
       );
 
+      // Fix null dates by matching customer names
+      const { fixNullDatesFromDetailSheet } = await import('../infrastructure/sync-fix-dates.js');
+      const fixResult = await fixNullDatesFromDetailSheet(prisma, detailData);
+      
+      if (fixResult.fixed > 0) {
+        logger.info(`Fixed ${fixResult.fixed} records with null tanggal by matching customer names`);
+      }
 
-      const successMessage = `Optimized sync: ${syncStats.created} created, ${syncStats.updated} updated, ${syncStats.skipped} skipped`;
+      // Auto-create missing summaries for master data
+      const { createMissingSummaries } = await import('../infrastructure/sync-create-missing-summaries.js');
+      const summaryResult = await createMissingSummaries(prisma);
+      
+      if (summaryResult.created > 0) {
+        logger.info(`Created ${summaryResult.created} missing summaries for master data`);
+      }
+
+      const successMessage = `Sync completed! ${syncStats.created} created, ${syncStats.updated} updated, ${syncStats.deleted} deleted${fixResult.fixed > 0 ? `, ${fixResult.fixed} dates fixed` : ''}${summaryResult.created > 0 ? `, ${summaryResult.created} summaries created` : ''}`;
 
       logger.info(successMessage);
 
@@ -286,17 +282,14 @@ export class SyncService {
 
       return {
         success: true,
-        message: `Sync completed! ${syncStats.created} created, ${syncStats.updated} updated - ${dateTime}`,
+        message: `Sync completed! - ${dateTime}`,
         totalRecords,
-        processedRecords: syncStats.created + syncStats.updated + syncStats.skipped,
+        processedRecords: syncStats.created + syncStats.updated + syncStats.deleted,
         syncStats,
-        enumSync: enumSyncResult,
-        batchesProcessed: syncStats.batchesProcessed || 0,
+        batchesProcessed: 0,
       };
     } catch (error: any) {
-      logger.error("Error in optimized auto sync:", error);
-
-
+      logger.error("Error in incremental sync:", error);
       throw new Error(`Sync failed: ${error.message}`);
     }
   }
@@ -336,8 +329,10 @@ export class SyncService {
 
       if (operation === "delete") {
         if (type === "summary") {
+          const summaryData = data as SurveySummarySheetRow & { nomorNcx?: string };
           await this.getGoogleSheets().deleteSummaryRow(
-            (data as SurveySummarySheetRow).no
+            summaryData.no,
+            summaryData.nomorNcx
           );
         } else {
           const detailData = data as SurveyDetailSheetRow & {

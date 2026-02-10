@@ -10,7 +10,5 @@ logger.info(`API Documentation: http://localhost:${port}/docs`);
 export default { 
   fetch: app.fetch, 
   port,
-  // Increase timeout for long-running operations like sync (default is 10s)
-  // Max allowed is 255 seconds (~4 minutes)
-  idleTimeout: 255 // Maximum allowed by Bun
+  idleTimeout: 255
 };

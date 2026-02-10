@@ -1,8 +1,8 @@
-// Optimized sync method - pre-process enums outside transaction
+// Incremental sync - only sync new/updated/deleted records
 import { Prisma } from '../../../generated/prisma/client.js';
 import type { EnumType } from '../application/enum-value.service.js';
 
-export async function autoSyncFromSheetsOptimized(
+export async function incrementalSyncFromSheets(
   prisma: any,
   enumValueService: any,
   summaryData: any[],
@@ -10,26 +10,23 @@ export async function autoSyncFromSheetsOptimized(
 ): Promise<{
   created: number;
   updated: number;
+  deleted: number;
   skipped: number;
   errors: number;
-  batchesProcessed: number;
 }> {
-  const BATCH_SIZE = 10; // Smaller batch for Vercel
-  const MAX_EXECUTION_TIME = 55000; // 55 seconds for Vercel safety
   const startTime = Date.now();
-
-  let stats = {
+  const stats = {
     created: 0,
     updated: 0,
+    deleted: 0,
     skipped: 0,
     errors: 0,
-    batchesProcessed: 0,
   };
 
   try {
-    console.log(`Starting optimized auto sync: ${detailData.length} detail + ${summaryData.length} summary records`);
+    console.log(`Starting incremental sync: ${detailData.length} detail + ${summaryData.length} summary records from sheets`);
 
-    // PRE-PROCESS: Resolve all enum IDs BEFORE transactions (parallel)
+    // PRE-PROCESS: Resolve all enum IDs
     const enumCache = new Map<string, string | null>();
     
     const resolveEnumId = async (enumType: EnumType, value: string | null): Promise<string | null> => {
@@ -51,7 +48,7 @@ export async function autoSyncFromSheetsOptimized(
       }
     };
 
-    // Pre-resolve all enums in parallel (much faster)
+    // Pre-resolve all enums in parallel
     console.log('Pre-resolving enums...');
     const enumPromises: Promise<any>[] = [];
     
@@ -66,32 +63,43 @@ export async function autoSyncFromSheetsOptimized(
     for (const summary of summaryData) {
       if (summary.statusJt) enumPromises.push(resolveEnumId('StatusJt', summary.statusJt));
       if (summary.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', summary.statusInstalasi));
-      if (summary.jenisKendala) enumPromises.push(resolveEnumId('JenisKendala', summary.jenisKendala));
-      if (summary.planTematik) enumPromises.push(resolveEnumId('PlanTematik', summary.planTematik));
-      if (summary.statusUsulan) enumPromises.push(resolveEnumId('StatusUsulan', summary.statusUsulan));
-      if (summary.keterangan) enumPromises.push(resolveEnumId('Keterangan', summary.keterangan));
     }
     
     await Promise.all(enumPromises);
     console.log(`Pre-resolved ${enumCache.size} unique enum values`);
 
-    // PROCESS DETAIL DATA (Master data) - Sequential processing
-    if (detailData.length > 0) {
-      console.log(`Processing ${detailData.length} detail records...`);
+    // STEP 1: Get all existing IDs from database
+    console.log('Fetching existing records from database...');
+    const [existingDetails, existingSummaries] = await Promise.all([
+      prisma.newBgesB2BOlo.findMany({
+        select: { 
+          idKendala: true,
+          lastSyncAt: true,
+        }
+      }),
+      prisma.ndeUsulanB2B.findMany({
+        select: { 
+          nomorNcx: true,
+          lastSyncAt: true,
+        }
+      })
+    ]);
+
+    const existingDetailIds = new Set(existingDetails.map((d: any) => d.idKendala));
+    const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
+
+    // STEP 2: Process ALL records with upsert (create or update)
+    // This is more reliable than trying to detect changes
+    
+    console.log(`Processing ${detailData.length} detail records with upsert...`);
+      const BATCH_SIZE = 10;
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
-        if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-          console.warn(`Timeout approaching, stopping at batch ${stats.batchesProcessed}`);
-          break;
-        }
-
         const batch = detailData.slice(i, i + BATCH_SIZE);
-        stats.batchesProcessed++;
 
         try {
           await prisma.$transaction(
             async (tx: any) => {
-              // Process records sequentially (faster than parallel in transaction)
               for (const detail of batch) {
                 if (!detail.idKendala || !detail.idKendala.trim()) {
                   stats.skipped++;
@@ -117,32 +125,32 @@ export async function autoSyncFromSheetsOptimized(
                   const keteranganId = enumCache.get(`Keterangan:${detail.keterangan}`);
                   if (keteranganId) enumFields.keterangan = { connect: { id: keteranganId } };
 
-                  await tx.newBgesB2BOlo.upsert({
+                  const result = await tx.newBgesB2BOlo.upsert({
                     where: { idKendala: detail.idKendala.trim() },
                     update: {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
-                      tglInputUsulan: detail.tglInputUsulan ?? undefined,
-                      umur: detail.umur ?? undefined,
-                      bln: detail.bln ?? undefined,
-                      jenisOrder: detail.jenisOrder ?? undefined,
-                      datel: detail.datel ?? undefined,
-                      sto: detail.sto ?? undefined,
-                      namaPelanggan: detail.namaPelanggan ?? undefined,
-                      latitude: detail.latitude ?? undefined,
-                      longitude: detail.longitude ?? undefined,
+                      tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : null,
+                      umur: detail.umur !== undefined ? detail.umur : null,
+                      bln: detail.bln !== undefined ? detail.bln : null,
+                      jenisOrder: detail.jenisOrder !== undefined ? detail.jenisOrder : null,
+                      datel: detail.datel !== undefined ? detail.datel : null,
+                      sto: detail.sto !== undefined ? detail.sto : null,
+                      namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : null,
+                      latitude: detail.latitude !== undefined ? detail.latitude : null,
+                      longitude: detail.longitude !== undefined ? detail.longitude : null,
                       ...enumFields,
-                      rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : undefined,
-                      ihldValue: detail.ihldValue ?? undefined,
-                      statusIhld: detail.statusIhld ?? undefined,
-                      idEprop: detail.idEprop ?? undefined,
-                      newSc: detail.newSc ?? undefined,
-                      namaOdp: detail.namaOdp ?? undefined,
-                      tglGolive: detail.tglGolive ?? undefined,
-                      avai: detail.avai ?? undefined,
-                      used: detail.used ?? undefined,
-                      isTotal: detail.isTotal ?? undefined,
-                      occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : undefined,
+                      rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
+                      ihldValue: detail.ihldValue !== undefined ? detail.ihldValue : null,
+                      statusIhld: detail.statusIhld !== undefined ? detail.statusIhld : null,
+                      idEprop: detail.idEprop !== undefined ? detail.idEprop : null,
+                      newSc: detail.newSc !== undefined ? detail.newSc : null,
+                      namaOdp: detail.namaOdp !== undefined ? detail.namaOdp : null,
+                      tglGolive: detail.tglGolive !== undefined ? detail.tglGolive : null,
+                      avai: detail.avai !== undefined ? detail.avai : null,
+                      used: detail.used !== undefined ? detail.used : null,
+                      isTotal: detail.isTotal !== undefined ? detail.isTotal : null,
+                      occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : null,
                     },
                     create: {
                       idKendala: detail.idKendala.trim(),
@@ -171,80 +179,89 @@ export async function autoSyncFromSheetsOptimized(
                       occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : null,
                     },
                   });
-                  stats.created++;
-                } catch (error: any) {
-                  if (error.code === 'P2002') {
-                    stats.updated++;
+                  
+                  // Check if it was created or updated
+                  const wasCreated = !existingDetailIds.has(detail.idKendala.trim());
+                  if (wasCreated) {
+                    stats.created++;
                   } else {
-                    stats.errors++;
+                    stats.updated++;
                   }
+                } catch (error: any) {
+                  console.error(`Error upserting detail ${detail.idKendala}:`, error.message);
+                  stats.errors++;
                 }
               }
             },
-            {
-              maxWait: 5000,
-              timeout: 15000,
-            }
+            { maxWait: 5000, timeout: 15000 }
           );
         } catch (batchError) {
           console.error(`Error processing detail batch:`, batchError);
           stats.errors += batch.length;
         }
       }
-    }
 
-    // PROCESS SUMMARY DATA - Sequential processing
-    if (summaryData.length > 0 && Date.now() - startTime < MAX_EXECUTION_TIME) {
-      console.log(`Processing ${summaryData.length} summary records...`);
+    // STEP 3: Process ALL summary records with upsert
+    if (summaryData.length > 0) {
+      console.log(`Processing ${summaryData.length} summary records with upsert...`);
+      const BATCH_SIZE = 10;
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
-        if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-          console.warn(`Timeout approaching, stopping at batch ${stats.batchesProcessed}`);
-          break;
-        }
-
         const batch = summaryData.slice(i, i + BATCH_SIZE);
-        stats.batchesProcessed++;
 
         try {
           await prisma.$transaction(
             async (tx: any) => {
-              // Process records sequentially (faster than parallel in transaction)
               for (const summary of batch) {
-                const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
-                const no = summary.no || (summary as any).NO;
+                let nomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim();
+                const no = (summary.no || summary.NO);
 
-                if (!no || !nomorNcx || !String(nomorNcx).trim()) {
+                if (!no || !nomorNcx) {
                   stats.skipped++;
                   continue;
                 }
 
                 try {
-                  // Check if master exists
-                  const existingMaster = await tx.newBgesB2BOlo.findUnique({
-                    where: { idKendala: String(nomorNcx).trim() },
+                  // Try to find master by nomorNcx first, then by name
+                  let existingMaster = await tx.newBgesB2BOlo.findUnique({
+                    where: { idKendala: nomorNcx },
                     select: { idKendala: true }
                   });
 
-                  // Create master if missing (with minimal data)
-                  if (!existingMaster) {
-                    const masterEnumFields: any = {};
+                  // If not found by nomorNcx, try to find by name (matching logic from summary)
+                  if (!existingMaster && summary.namaPelanggan) {
+                    existingMaster = await tx.newBgesB2BOlo.findFirst({
+                      where: {
+                        namaPelanggan: {
+                          equals: summary.namaPelanggan.trim(),
+                          mode: 'insensitive'
+                        }
+                      },
+                      select: { idKendala: true }
+                    });
                     
-                    const jenisKendalaId = enumCache.get(`JenisKendala:${summary.jenisKendala}`);
-                    if (jenisKendalaId) masterEnumFields.jenisKendala = { connect: { id: jenisKendalaId } };
+                    if (existingMaster) {
+                      console.log(`Matched summary ${nomorNcx} to master ${existingMaster.idKendala} by name: ${summary.namaPelanggan}`);
+                      // Update nomorNcx to use the found idKendala from master data
+                      nomorNcx = existingMaster.idKendala;
+                    }
+                  }
+
+                  if (!existingMaster) {
+                    console.log(`Master data not found for ${nomorNcx}, creating it...`);
+                    
+                    // Create master data from summary info
+                    const masterEnumFields: any = {};
                     
                     const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
                     if (planTematikId) masterEnumFields.planTematik = { connect: { id: planTematikId } };
                     
                     const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
                     if (statusUsulanId) masterEnumFields.statusUsulan = { connect: { id: statusUsulanId } };
-                    
-                    const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
-                    if (statusInstalasiId) masterEnumFields.statusInstalasi = { connect: { id: statusInstalasiId } };
 
                     await tx.newBgesB2BOlo.create({
                       data: {
-                        idKendala: String(nomorNcx).trim(),
+                        idKendala: nomorNcx,
                         syncStatus: 'SYNCED',
                         lastSyncAt: new Date(),
                         datel: summary.datel ?? null,
@@ -258,12 +275,11 @@ export async function autoSyncFromSheetsOptimized(
                     });
                   }
 
-                  // Use cached enum IDs for NDE record
                   const statusJtId = enumCache.get(`StatusJt:${summary.statusJt}`);
                   const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
 
                   await tx.ndeUsulanB2B.upsert({
-                    where: { nomorNcx: String(nomorNcx).trim() },
+                    where: { nomorNcx: nomorNcx },
                     update: {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
@@ -291,7 +307,7 @@ export async function autoSyncFromSheetsOptimized(
                     },
                     create: {
                       no: no,
-                      nomorNcx: String(nomorNcx).trim(),
+                      nomorNcx: nomorNcx,
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
                       statusJtId: statusJtId ?? null,
@@ -317,20 +333,22 @@ export async function autoSyncFromSheetsOptimized(
                       statusUsulan: summary.statusUsulan ?? null,
                     },
                   });
-                  stats.created++;
-                } catch (error: any) {
-                  if (error.code === 'P2002') {
+                  
+                  if (existingSummaryIds.has(nomorNcx)) {
                     stats.updated++;
                   } else {
-                    stats.errors++;
+                    stats.created++;
                   }
+                } catch (error: any) {
+                  console.error(`Error upserting summary ${nomorNcx} (no: ${no}):`, error.message);
+                  if (error.code === 'P2002') {
+                    console.error(`Duplicate 'no' detected: ${no}. This summary will be skipped.`);
+                  }
+                  stats.errors++;
                 }
               }
             },
-            {
-              maxWait: 5000,
-              timeout: 15000,
-            }
+            { maxWait: 5000, timeout: 15000 }
           );
         } catch (batchError) {
           console.error(`Error processing summary batch:`, batchError);
@@ -342,13 +360,12 @@ export async function autoSyncFromSheetsOptimized(
     const totalTime = Date.now() - startTime;
     const timeInSeconds = (totalTime / 1000).toFixed(2);
     
-    console.log(`✅ Optimized auto sync completed in ${timeInSeconds}s`);
-    console.log(`📊 Results: ${stats.created} created, ${stats.updated} updated, ${stats.skipped} skipped, ${stats.errors} errors`);
-    console.log(`📦 Processed ${stats.batchesProcessed} batches`);
+    console.log(`✅ Incremental sync completed in ${timeInSeconds}s`);
+    console.log(`📊 Results: ${stats.created} created, ${stats.updated} updated, ${stats.deleted} deleted, ${stats.skipped} skipped, ${stats.errors} errors`);
 
     return stats;
   } catch (error) {
-    console.error('Error in optimized auto sync:', error);
+    console.error('Error in incremental sync:', error);
     throw error;
   }
 }

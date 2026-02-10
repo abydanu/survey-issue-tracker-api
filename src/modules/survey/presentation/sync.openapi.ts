@@ -54,7 +54,7 @@ const AdminEditableSurveyBaseSchema = z.object({
   no: z.string(),
 
   statusJt: z.string().nullable().optional(),
-  c2r: z.number().nullable().optional(),
+  // c2r is a formula field in sheets, cannot be edited
   alamat: z.string().nullable().optional(),
   jenisLayanan: z.string().nullable().optional(),
   nilaiKontrak: z.union([z.string(), z.number()]).nullable().optional().transform(safeNumberTransform),

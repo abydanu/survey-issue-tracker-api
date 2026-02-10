@@ -142,17 +142,22 @@ export class SyncController {
   getSyncStatus = async (c: Context) => {
     try {
       const result = await this.syncService.getSyncStatus();
+      
+      const response = {
+        lastSync: result.lastSync
+          ? {
+              status: result.lastSync.status,
+              message: result.lastSync.message,
+              syncedAt: result.lastSync.syncedAt.toISOString(),
+      
+              stats: this.parseStatsFromMessage(result.lastSync.message),
+            }
+          : null,
+      };
+      
       return ApiResponseHelper.success(
         c,
-        {
-          ...result,
-          lastSync: result.lastSync
-            ? {
-              ...result.lastSync,
-              syncedAt: result.lastSync.syncedAt.toISOString(),
-            }
-            : null,
-        },
+        response,
         'Successfully fetched sync status'
       );
     } catch (error: any) {
@@ -161,178 +166,61 @@ export class SyncController {
     }
   };
 
+  private parseStatsFromMessage(message: string | null): any {
+    if (!message) return null;
+    
+    try {
+      const createdMatch = message.match(/(\d+)\s+created/i);
+      const updatedMatch = message.match(/(\d+)\s+updated/i);
+      const skippedMatch = message.match(/(\d+)\s+skipped/i);
+      
+      if (createdMatch || updatedMatch) {
+        return {
+          created: createdMatch?.[1] ? parseInt(createdMatch[1]) : 0,
+          updated: updatedMatch?.[1] ? parseInt(updatedMatch[1]) : 0,
+          skipped: skippedMatch?.[1] ? parseInt(skippedMatch[1]) : 0,
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to parse stats from message');
+    }
+    
+    return null;
+  }
+
   syncFromSheets = async (c: Context) => {
     try {
-      logger.info('Starting auto-batch sync from Google Sheets...');
+      logger.info('Starting optimized sync from Google Sheets...');
 
       const startTime = Date.now();
+      
+      const result = await this.syncService.autoSyncFromSheets();
+      
+      const endTime = Date.now();
+      const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
+      
+      logger.info({
+        syncStats: result.syncStats,
+        processingTime,
+        totalRecords: result.totalRecords,
+        processedRecords: result.processedRecords
+      }, 'Sync completed successfully');
 
-
-      return this.syncAllBatchesWithProgress(c, startTime);
+      return ApiResponseHelper.success(
+        c,
+        {
+          stats: result.syncStats,
+          totalRecords: result.totalRecords,
+          processedRecords: result.processedRecords,
+          processingTime,
+          syncedAt: new Date().toISOString()
+        },
+        result.message
+      );
     } catch (error: any) {
       logger.error('Sync error:', error);
       return ApiResponseHelper.error(c, error.message || 'Sync failed - please try again');
     }
-  };
-
-  private syncAllBatchesWithProgress = async (c: Context, startTime: number) => {
-
-    c.header('Content-Type', 'text/event-stream');
-    c.header('Cache-Control', 'no-cache');
-    c.header('Connection', 'keep-alive');
-
-    const syncService = this.syncService;
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder();
-        let isClosed = false;
-
-        const sendEvent = (data: any): boolean => {
-          if (isClosed) {
-            return false;
-          }
-          
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-            return true;
-          } catch (err: any) {
-            if (err.code === 'ERR_INVALID_STATE' || err.message?.includes('closed')) {
-              isClosed = true;
-              logger.warn('Stream closed by client');
-            } else {
-              logger.error({ err }, 'Failed to send event');
-            }
-            return false;
-          }
-        };
-
-        const closeController = () => {
-          if (!isClosed) {
-            try {
-              controller.close();
-              isClosed = true;
-            } catch (err) {
-              // Ignore close errors
-            }
-          }
-        };
-
-        try {
-          sendEvent({ 
-            type: 'start', 
-            message: '🔄 Memproses data dari Google Sheets...',
-            timestamp: new Date().toISOString()
-          });
-
-          let batch = 0;
-          const batchSize = 50;
-          let completed = false;
-          let lastPercentage = 0;
-
-          const totalStats = {
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: 0
-          };
-
-          while (!completed && !isClosed) {
-            try {
-              const result = await syncService.syncBatch(batch, batchSize);
-
-              totalStats.created += result.stats.created;
-              totalStats.updated += result.stats.updated;
-              totalStats.skipped += result.stats.skipped;
-              totalStats.errors += result.stats.errors;
-
-              const percentage = result.totalRecords > 0
-                ? Math.round((result.totalProcessed / result.totalRecords) * 100)
-                : 0;
-
-              // Kirim progress update setiap kelipatan 25% atau batch terakhir
-              const shouldSendProgress = 
-                Math.floor(percentage / 25) > Math.floor(lastPercentage / 25) || 
-                result.completed;
-
-              if (shouldSendProgress) {
-                const sent = sendEvent({
-                  type: 'progress',
-                  data: {
-                    totalProcessed: result.totalProcessed,
-                    totalRecords: result.totalRecords,
-                    percentage,
-                    totalStats
-                  },
-                  message: `⏳ Memproses... ${percentage}%`,
-                  timestamp: new Date().toISOString()
-                });
-                
-                if (!sent) break; // Client disconnected
-                lastPercentage = percentage;
-              }
-
-              completed = result.completed;
-              batch++;
-
-              if (!completed && !isClosed) {
-                await new Promise(resolve => setTimeout(resolve, 200));
-              }
-            } catch (batchError: any) {
-              logger.error({ batchError, batch }, 'Error in batch');
-              totalStats.errors++;
-              
-              // Lanjutkan ke batch berikutnya jika ada error
-              batch++;
-              
-              // Jika error terlalu banyak, stop
-              if (totalStats.errors > 5) {
-                throw new Error(`Too many errors (${totalStats.errors}), stopping sync`);
-              }
-            }
-          }
-
-          if (isClosed) {
-            logger.info('Sync interrupted: client disconnected');
-            return;
-          }
-
-          const endTime = Date.now();
-          const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
-          const dateTime = new Date().toLocaleString('id-ID', {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          });
-
-          sendEvent({
-            type: 'complete',
-            data: {
-              totalStats,
-              processingTime,
-              syncedAt: dateTime
-            },
-            message: `✅ Sinkronisasi selesai! ${totalStats.created} data baru, ${totalStats.updated} diupdate`,
-            timestamp: new Date().toISOString()
-          });
-
-          closeController();
-        } catch (error: any) {
-          logger.error({ error }, 'Sync stream error');
-          
-          if (!isClosed) {
-            sendEvent({
-              type: 'error',
-              message: `❌ Sinkronisasi gagal: ${error.message || 'Terjadi kesalahan'}`,
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          closeController();
-        }
-      }
-    });
-
-    return new Response(stream);
   };
 
   syncEnumsFromSheets = async (c: Context) => {
@@ -347,8 +235,8 @@ export class SyncController {
       const message = result.message || (dryRun ? 'Enum sync dry run' : 'Enum sync completed');
       return ApiResponseHelper.success(c, result, message);
     } catch (error: any) {
-      logger.error('Sync enums from sheets error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to sync enums from Google Sheets');
+      logger.error('Sync enums from sheets error:', error.message);
+      return ApiResponseHelper.error(c, 'Failed to sync enums from Google Sheets');
     }
   };
 
@@ -357,8 +245,8 @@ export class SyncController {
       const result = await this.syncService.validateSyncData();
       return ApiResponseHelper.success(c, result, 'Successfully validated sync data');
     } catch (error: any) {
-      logger.error('Validate sync data error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to validate sync data');
+      logger.error('Validate sync data error:', error.message);
+      return ApiResponseHelper.error(c, 'Failed to validate sync data');
     }
   };
 
@@ -382,7 +270,7 @@ export class SyncController {
       return ApiResponseHelper.success(
         c,
         serializeBigInt(updated),
-        `${username} successfully updated ${identifier}`
+        `successfully updated ${identifier}`
       );
     } catch (error: any) {
       logger.error({ 
@@ -402,9 +290,10 @@ export class SyncController {
       if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
+
+      logger.error(error.message, 'Fatal Error')
       
-      // Return error message dari service untuk debugging
-      return ApiResponseHelper.error(c, error.message || 'Failed to update survey');
+      return ApiResponseHelper.error(c, 'Failed to update survey');
     }
   };
 
@@ -462,7 +351,7 @@ export class SyncController {
       return ApiResponseHelper.success(
         c,
         null,
-        `${username} successfully updated tanggal input for ${idKendala}`
+        `Successfully updated tanggal input for ${idKendala}`
       );
     } catch (error: any) {
       logger.error('Update tanggal input error:', error);

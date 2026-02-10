@@ -229,17 +229,65 @@ export class GoogleSheetsService {
 
       const dataRows = rows.slice(2);
 
+      console.log(`[DEBUG] Total rows in detail sheet (excluding header): ${dataRows.length}`);
+      console.log(`[DEBUG] Checking rows with idKendala (column E)...`);
+      
       const results = [];
+      let skippedCount = 0;
+      const skipReasons: { [key: string]: number } = {
+        'empty_row': 0,
+        'no_idKendala': 0,
+        'idKendala_dash': 0,
+      };
+      
       for (const [index, row] of dataRows.entries()) {
-        if (
-          Array.isArray(row) && 
-          row[4] && // Column E (index 4) = idKendala harus ada
-          String(row[4]).trim() !== "" &&
-          String(row[4]).trim() !== "-"
-        ) {
-          results.push(await this.mapRowToDetail(row, index + 3));
+        const rowNumber = index + 3;
+        
+        if (!Array.isArray(row) || row.length === 0) {
+          skipReasons['empty_row'] = (skipReasons['empty_row'] || 0) + 1;
+          skippedCount++;
+          continue;
         }
+        
+        const idKendala = row[4] ? String(row[4]).trim() : '';
+        const namaPelanggan = row[8] ? String(row[8]).trim() : 'N/A';
+        
+        // Debug: log first few rows to see column mapping
+        if (rowNumber <= 5) {
+          console.log(`[DEBUG] Row ${rowNumber} columns:`, {
+            'A(0)': row[0] || 'empty',
+            'B(1)': row[1] || 'empty', 
+            'C(2)': row[2] || 'empty',
+            'D(3)': row[3] || 'empty',
+            'E(4)': row[4] || 'empty',
+            'F(5)': row[5] || 'empty',
+            'G(6)': row[6] || 'empty',
+            'H(7)': row[7] || 'empty',
+            'I(8)': row[8] || 'empty',
+          });
+        }
+        
+        if (!idKendala || idKendala === '') {
+          if (rowNumber <= 10 || (rowNumber > 600 && rowNumber <= 610)) {
+            console.log(`[SKIP] Row ${rowNumber}: No idKendala (nama: ${namaPelanggan}, raw row[4]: "${row[4]}")`);
+          }
+          skipReasons['no_idKendala'] = (skipReasons['no_idKendala'] || 0) + 1;
+          skippedCount++;
+          continue;
+        }
+        
+        if (idKendala === '-') {
+          skipReasons['idKendala_dash'] = (skipReasons['idKendala_dash'] || 0) + 1;
+          skippedCount++;
+          continue;
+        }
+        
+        results.push(await this.mapRowToDetail(row, rowNumber));
       }
+      
+      console.log(`[DEBUG] Detail records processed: ${results.length}, skipped: ${skippedCount}`);
+      console.log(`[DEBUG] Skip reasons:`, skipReasons);
+      
       return results;
     } catch (error: any) {
       logger.error({ 
@@ -415,14 +463,12 @@ export class GoogleSheetsService {
       }
 
       this.lastEnumCacheUpdate = now;
-      logger.info(`Loaded ${enumValues.length} enum mappings from database`);
     } catch (error: any) {
       logger.error({ 
         message: error.message, 
         stack: error.stack,
         name: error.name 
       }, 'Failed to load enum mapping from database');
-      // Don't throw, just continue with static mapping as fallback
     } finally {
       this.isLoadingEnumCache = false;
     }
@@ -548,6 +594,32 @@ export class GoogleSheetsService {
     }
   }
 
+  private async findSummaryRowIndexByNomorNcx(nomorNcx: string): Promise<number | null> {
+    try {
+      await this.ensureSheetConfigLoaded();
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: `${this.summarySheetName}!D:D`, // Column D contains nomorNcx
+      });
+
+      const rows = response.data.values || [];
+      const dataRows = rows.length < 3 ? [] : rows.slice(2);
+
+      const idx = dataRows.findIndex((row: any[]) => {
+        const cellValue = String(row[0] ?? "").trim();
+        return cellValue === String(nomorNcx).trim();
+      });
+
+      return idx >= 0 ? idx + 3 : null;
+    } catch (error: any) {
+      logger.error({ 
+        message: error.message, 
+        stack: error.stack 
+      }, "Error finding summary row index by nomorNcx");
+      return null;
+    }
+  }
+
   private async findDetailRowIndex(idKendala: string): Promise<number | null> {
     try {
       await this.ensureSheetConfigLoaded();
@@ -590,32 +662,46 @@ export class GoogleSheetsService {
   ): Promise<boolean> {
     try {
       await this.ensureSheetConfigLoaded();
-      if (!data.no) {
-        throw new Error('Field "no" diperlukan untuk update');
+      if (!data.no && !data.nomorNcx) {
+        throw new Error('Field "no" atau "nomorNcx" diperlukan untuk update');
       }
 
-      logger.info(`Searching for summary row with no: ${data.no}`);
-      const rowIndex = await this.findSummaryRowIndex(data.no);
+      let rowIndex: number | null = null;
+
+      // Try to find by 'no' first
+      if (data.no) {
+        logger.info(`Searching for summary row with no: ${data.no}`);
+        rowIndex = await this.findSummaryRowIndex(data.no);
+      }
+
+      // If not found by 'no', try to find by 'nomorNcx'
+      if (!rowIndex && data.nomorNcx) {
+        logger.info(`Row not found by no, searching by nomorNcx: ${data.nomorNcx}`);
+        rowIndex = await this.findSummaryRowIndexByNomorNcx(data.nomorNcx);
+      }
+
       if (!rowIndex) {
         const response = await this.sheets.spreadsheets.values.get({
           spreadsheetId: this.spreadsheetId,
-          range: `${this.summarySheetName}!A:A`,
+          range: `${this.summarySheetName}!A:D`,
         });
         const rows = response.data.values || [];
         const dataRows = rows.length < 3 ? [] : rows.slice(2);
         const availableNos = dataRows
           .map((row: any[]) => String(row[0] ?? "").trim())
           .filter(Boolean);
+        const availableNcx = dataRows
+          .map((row: any[]) => String(row[3] ?? "").trim())
+          .filter(Boolean);
 
         logger.error(
-          `Data dengan no ${
-            data.no
-          } tidak ditemukan di Google Sheets. Available nos: ${availableNos
-            .slice(0, 10)
-            .join(", ")}${availableNos.length > 10 ? "..." : ""}`
+          `Data tidak ditemukan di Google Sheets. ` +
+          `Searched no: ${data.no}, nomorNcx: ${data.nomorNcx}. ` +
+          `Available nos: ${availableNos.slice(0, 5).join(", ")}${availableNos.length > 5 ? "..." : ""}. ` +
+          `Available nomorNcx: ${availableNcx.slice(0, 5).join(", ")}${availableNcx.length > 5 ? "..." : ""}`
         );
         throw new Error(
-          `Data dengan no ${data.no} tidak ditemukan di Google Sheets`
+          `Data dengan no ${data.no} atau nomorNcx ${data.nomorNcx} tidak ditemukan di Google Sheets`
         );
       }
 
@@ -632,13 +718,6 @@ export class GoogleSheetsService {
       if (data.statusJt !== undefined) {
         const value = await this.denormalizeEnumValue(data.statusJt, 'StatusJt');
         setCell("B", value);
-      }
-      if (data.c2r !== undefined) {
-        // Format c2r as percentage (e.g., 0.85 -> "85%")
-        const c2rValue = data.c2r !== null && data.c2r !== undefined 
-          ? `${(Number(data.c2r) * 100).toFixed(0)}%`
-          : "";
-        setCell("C", c2rValue);
       }
       if (data.nomorNcx !== undefined) {
         const nomorNcxValue = data.nomorNcx ?? "";
@@ -667,7 +746,7 @@ export class GoogleSheetsService {
 
       if (updates.length === 0) {
         logger.info(
-          `No editable fields provided, skip updating summary row ${rowIndex} for no: ${data.no}`
+          `No editable fields provided, skip updating summary row ${rowIndex}`
         );
         return true;
       }
@@ -680,13 +759,14 @@ export class GoogleSheetsService {
         },
       });
 
-      logger.info(`Updated summary row ${rowIndex} for no: ${data.no}`);
+      logger.info(`Updated summary row ${rowIndex} (no: ${data.no}, nomorNcx: ${data.nomorNcx})`);
       return true;
     } catch (error: any) {
       logger.error({ 
         message: error.message, 
         stack: error.stack,
-        no: data.no 
+        no: data.no,
+        nomorNcx: data.nomorNcx
       }, "Error updating summary row in Google Sheets");
       throw new Error(
         `Gagal mengupdate data di Google Sheets: ${error.message}`
@@ -827,13 +907,27 @@ export class GoogleSheetsService {
     }
   }
 
-  async deleteSummaryRow(no: string): Promise<boolean> {
+  async deleteSummaryRow(no: string, nomorNcx?: string): Promise<boolean> {
     try {
       await this.ensureSheetConfigLoaded();
-      const rowIndex = await this.findSummaryRowIndex(no);
+      
+      let rowIndex: number | null = null;
+
+      // Try to find by 'no' first
+      if (no) {
+        logger.info(`Searching for summary row to delete with no: ${no}`);
+        rowIndex = await this.findSummaryRowIndex(no);
+      }
+
+      // If not found by 'no', try to find by 'nomorNcx'
+      if (!rowIndex && nomorNcx) {
+        logger.info(`Row not found by no, searching by nomorNcx: ${nomorNcx}`);
+        rowIndex = await this.findSummaryRowIndexByNomorNcx(nomorNcx);
+      }
+
       if (!rowIndex) {
         throw new Error(
-          `Data dengan no ${no} tidak ditemukan di Google Sheets`
+          `Data dengan no ${no}${nomorNcx ? ` atau nomorNcx ${nomorNcx}` : ''} tidak ditemukan di Google Sheets`
         );
       }
 
@@ -859,13 +953,14 @@ export class GoogleSheetsService {
         },
       });
 
-      logger.info(`Deleted summary row ${rowIndex} for no: ${no}`);
+      logger.info(`Deleted summary row ${rowIndex} (no: ${no}, nomorNcx: ${nomorNcx})`);
       return true;
     } catch (error: any) {
       logger.error({ 
         message: error.message, 
         stack: error.stack,
-        no 
+        no,
+        nomorNcx
       }, "Error deleting summary row from Google Sheets");
       throw new Error(
         `Gagal menghapus data dari Google Sheets: ${error.message}`
@@ -1012,6 +1107,12 @@ export class GoogleSheetsService {
     let tglInputUsulan: Date | null = null;
     if (row[3]) {
       const dateStr = String(row[3]).trim();
+      
+      // Debug log untuk tanggal
+      if (rowNumber <= 5) {
+        console.log(`[DEBUG] Row ${rowNumber} - Tanggal Input (col D/row[3]): "${dateStr}"`);
+      }
+      
       if (dateStr && dateStr !== '-' && dateStr !== '') {
         try {
           if (dateStr.includes("/")) {
@@ -1031,6 +1132,11 @@ export class GoogleSheetsService {
               const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
               tglInputUsulan = new Date(isoDateStr);
               
+              // Debug log
+              if (rowNumber <= 5) {
+                console.log(`[DEBUG] Row ${rowNumber} - Parsed: ${dateStr} -> ${isoDateStr} -> ${tglInputUsulan}`);
+              }
+              
               // Validate the date is reasonable
               if (isNaN(tglInputUsulan.getTime()) || year < 2000 || year > 2100) {
                 console.warn(`Invalid date parsed from "${dateStr}" at row ${rowNumber}: ${tglInputUsulan}`);
@@ -1049,6 +1155,11 @@ export class GoogleSheetsService {
           console.warn(`Failed to parse date "${dateStr}" at row ${rowNumber}:`, error);
           tglInputUsulan = null;
         }
+      } else {
+        // Debug: tanggal kosong
+        if (rowNumber <= 5) {
+          console.log(`[DEBUG] Row ${rowNumber} - Tanggal kosong atau '-'`);
+        }
       }
     }
 
@@ -1059,6 +1170,11 @@ export class GoogleSheetsService {
       if (!isNaN(parsed)) {
         umur = parsed;
       }
+    }
+    
+    // Log jika tanggal null padahal ada idKendala
+    if (!tglInputUsulan && row[4] && String(row[4]).trim()) {
+      console.warn(`[WARNING] Row ${rowNumber} - idKendala: ${String(row[4]).trim()} has NULL tanggal input. Raw value: "${row[3]}"`);
     }
 
     let rabHld: bigint | null = null;

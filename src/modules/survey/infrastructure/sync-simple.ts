@@ -1,8 +1,8 @@
-// Optimized sync method - pre-process enums outside transaction
+// Simple sync - upsert all records (create or update automatically)
 import { Prisma } from '../../../generated/prisma/client.js';
 import type { EnumType } from '../application/enum-value.service.js';
 
-export async function autoSyncFromSheetsOptimized(
+export async function simpleSyncFromSheets(
   prisma: any,
   enumValueService: any,
   summaryData: any[],
@@ -10,26 +10,32 @@ export async function autoSyncFromSheetsOptimized(
 ): Promise<{
   created: number;
   updated: number;
+  deleted: number;
   skipped: number;
   errors: number;
-  batchesProcessed: number;
 }> {
-  const BATCH_SIZE = 10; // Smaller batch for Vercel
-  const MAX_EXECUTION_TIME = 55000; // 55 seconds for Vercel safety
   const startTime = Date.now();
-
-  let stats = {
+  const stats = {
     created: 0,
     updated: 0,
+    deleted: 0,
     skipped: 0,
     errors: 0,
-    batchesProcessed: 0,
   };
 
   try {
-    console.log(`Starting optimized auto sync: ${detailData.length} detail + ${summaryData.length} summary records`);
+    console.log(`Starting simple sync: ${detailData.length} detail + ${summaryData.length} summary records from sheets`);
 
-    // PRE-PROCESS: Resolve all enum IDs BEFORE transactions (parallel)
+    // Get existing IDs to track created vs updated
+    const [existingDetails, existingSummaries] = await Promise.all([
+      prisma.newBgesB2BOlo.findMany({ select: { idKendala: true } }),
+      prisma.ndeUsulanB2B.findMany({ select: { nomorNcx: true } })
+    ]);
+
+    const existingDetailIds = new Set(existingDetails.map((d: any) => d.idKendala));
+    const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
+
+    // PRE-PROCESS: Resolve all enum IDs in parallel
     const enumCache = new Map<string, string | null>();
     
     const resolveEnumId = async (enumType: EnumType, value: string | null): Promise<string | null> => {
@@ -51,7 +57,6 @@ export async function autoSyncFromSheetsOptimized(
       }
     };
 
-    // Pre-resolve all enums in parallel (much faster)
     console.log('Pre-resolving enums...');
     const enumPromises: Promise<any>[] = [];
     
@@ -66,32 +71,22 @@ export async function autoSyncFromSheetsOptimized(
     for (const summary of summaryData) {
       if (summary.statusJt) enumPromises.push(resolveEnumId('StatusJt', summary.statusJt));
       if (summary.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', summary.statusInstalasi));
-      if (summary.jenisKendala) enumPromises.push(resolveEnumId('JenisKendala', summary.jenisKendala));
-      if (summary.planTematik) enumPromises.push(resolveEnumId('PlanTematik', summary.planTematik));
-      if (summary.statusUsulan) enumPromises.push(resolveEnumId('StatusUsulan', summary.statusUsulan));
-      if (summary.keterangan) enumPromises.push(resolveEnumId('Keterangan', summary.keterangan));
     }
     
     await Promise.all(enumPromises);
     console.log(`Pre-resolved ${enumCache.size} unique enum values`);
 
-    // PROCESS DETAIL DATA (Master data) - Sequential processing
+    // PROCESS DETAIL DATA with upsert
     if (detailData.length > 0) {
       console.log(`Processing ${detailData.length} detail records...`);
+      const BATCH_SIZE = 10;
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
-        if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-          console.warn(`Timeout approaching, stopping at batch ${stats.batchesProcessed}`);
-          break;
-        }
-
         const batch = detailData.slice(i, i + BATCH_SIZE);
-        stats.batchesProcessed++;
 
         try {
           await prisma.$transaction(
             async (tx: any) => {
-              // Process records sequentially (faster than parallel in transaction)
               for (const detail of batch) {
                 if (!detail.idKendala || !detail.idKendala.trim()) {
                   stats.skipped++;
@@ -99,7 +94,6 @@ export async function autoSyncFromSheetsOptimized(
                 }
 
                 try {
-                  // Use cached enum IDs (no async calls in transaction)
                   const enumFields: any = {};
                   
                   const jenisKendalaId = enumCache.get(`JenisKendala:${detail.jenisKendala}`);
@@ -171,20 +165,19 @@ export async function autoSyncFromSheetsOptimized(
                       occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : null,
                     },
                   });
-                  stats.created++;
-                } catch (error: any) {
-                  if (error.code === 'P2002') {
+                  
+                  if (existingDetailIds.has(detail.idKendala.trim())) {
                     stats.updated++;
                   } else {
-                    stats.errors++;
+                    stats.created++;
                   }
+                } catch (error: any) {
+                  console.error(`Error upserting detail ${detail.idKendala}:`, error.message);
+                  stats.errors++;
                 }
               }
             },
-            {
-              maxWait: 5000,
-              timeout: 15000,
-            }
+            { maxWait: 5000, timeout: 15000 }
           );
         } catch (batchError) {
           console.error(`Error processing detail batch:`, batchError);
@@ -193,77 +186,44 @@ export async function autoSyncFromSheetsOptimized(
       }
     }
 
-    // PROCESS SUMMARY DATA - Sequential processing
-    if (summaryData.length > 0 && Date.now() - startTime < MAX_EXECUTION_TIME) {
+    // PROCESS SUMMARY DATA with upsert
+    if (summaryData.length > 0) {
       console.log(`Processing ${summaryData.length} summary records...`);
+      const BATCH_SIZE = 10;
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
-        if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-          console.warn(`Timeout approaching, stopping at batch ${stats.batchesProcessed}`);
-          break;
-        }
-
         const batch = summaryData.slice(i, i + BATCH_SIZE);
-        stats.batchesProcessed++;
 
         try {
           await prisma.$transaction(
             async (tx: any) => {
-              // Process records sequentially (faster than parallel in transaction)
               for (const summary of batch) {
-                const nomorNcx = summary.nomorNcx || (summary as any).nomorNc;
-                const no = summary.no || (summary as any).NO;
+                const nomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim();
+                const no = (summary.no || summary.NO);
 
-                if (!no || !nomorNcx || !String(nomorNcx).trim()) {
+                if (!no || !nomorNcx) {
                   stats.skipped++;
                   continue;
                 }
 
                 try {
-                  // Check if master exists
+                  // Ensure master exists
                   const existingMaster = await tx.newBgesB2BOlo.findUnique({
-                    where: { idKendala: String(nomorNcx).trim() },
+                    where: { idKendala: nomorNcx },
                     select: { idKendala: true }
                   });
 
-                  // Create master if missing (with minimal data)
                   if (!existingMaster) {
-                    const masterEnumFields: any = {};
-                    
-                    const jenisKendalaId = enumCache.get(`JenisKendala:${summary.jenisKendala}`);
-                    if (jenisKendalaId) masterEnumFields.jenisKendala = { connect: { id: jenisKendalaId } };
-                    
-                    const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
-                    if (planTematikId) masterEnumFields.planTematik = { connect: { id: planTematikId } };
-                    
-                    const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
-                    if (statusUsulanId) masterEnumFields.statusUsulan = { connect: { id: statusUsulanId } };
-                    
-                    const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
-                    if (statusInstalasiId) masterEnumFields.statusInstalasi = { connect: { id: statusInstalasiId } };
-
-                    await tx.newBgesB2BOlo.create({
-                      data: {
-                        idKendala: String(nomorNcx).trim(),
-                        syncStatus: 'SYNCED',
-                        lastSyncAt: new Date(),
-                        datel: summary.datel ?? null,
-                        sto: summary.sto ?? null,
-                        namaPelanggan: summary.namaPelanggan ?? null,
-                        latitude: summary.latitude ?? null,
-                        longitude: summary.longitude ?? null,
-                        ...masterEnumFields,
-                        rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                      }
-                    });
+                    console.warn(`Master data not found for ${nomorNcx}, skipping summary`);
+                    stats.skipped++;
+                    continue;
                   }
 
-                  // Use cached enum IDs for NDE record
                   const statusJtId = enumCache.get(`StatusJt:${summary.statusJt}`);
                   const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
 
                   await tx.ndeUsulanB2B.upsert({
-                    where: { nomorNcx: String(nomorNcx).trim() },
+                    where: { nomorNcx: nomorNcx },
                     update: {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
@@ -291,7 +251,7 @@ export async function autoSyncFromSheetsOptimized(
                     },
                     create: {
                       no: no,
-                      nomorNcx: String(nomorNcx).trim(),
+                      nomorNcx: nomorNcx,
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
                       statusJtId: statusJtId ?? null,
@@ -317,20 +277,19 @@ export async function autoSyncFromSheetsOptimized(
                       statusUsulan: summary.statusUsulan ?? null,
                     },
                   });
-                  stats.created++;
-                } catch (error: any) {
-                  if (error.code === 'P2002') {
+                  
+                  if (existingSummaryIds.has(nomorNcx)) {
                     stats.updated++;
                   } else {
-                    stats.errors++;
+                    stats.created++;
                   }
+                } catch (error: any) {
+                  console.error(`Error upserting summary ${nomorNcx}:`, error.message);
+                  stats.errors++;
                 }
               }
             },
-            {
-              maxWait: 5000,
-              timeout: 15000,
-            }
+            { maxWait: 5000, timeout: 15000 }
           );
         } catch (batchError) {
           console.error(`Error processing summary batch:`, batchError);
@@ -342,13 +301,12 @@ export async function autoSyncFromSheetsOptimized(
     const totalTime = Date.now() - startTime;
     const timeInSeconds = (totalTime / 1000).toFixed(2);
     
-    console.log(`✅ Optimized auto sync completed in ${timeInSeconds}s`);
+    console.log(`✅ Simple sync completed in ${timeInSeconds}s`);
     console.log(`📊 Results: ${stats.created} created, ${stats.updated} updated, ${stats.skipped} skipped, ${stats.errors} errors`);
-    console.log(`📦 Processed ${stats.batchesProcessed} batches`);
 
     return stats;
   } catch (error) {
-    console.error('Error in optimized auto sync:', error);
+    console.error('Error in simple sync:', error);
     throw error;
   }
 }

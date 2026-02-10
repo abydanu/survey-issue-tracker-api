@@ -126,7 +126,7 @@ export class AdminService {
           .syncToSheets("update", "summary", {
             ...data,
             no: existing.no,
-            nomorNcx: data.nomorNcx ?? undefined,
+            nomorNcx: updated.nomorNcx, // Use updated nomorNcx from result
           } as any)
           .catch((error) => {
             logger.error({
@@ -204,7 +204,7 @@ export class AdminService {
       // Sync to sheets (skip if flag is set for Vercel timeout protection)
       if (!this.skipSheetSync) {
         this.syncService
-          .syncToSheets("delete", "summary", { no } as any)
+          .syncToSheets("delete", "summary", { no, nomorNcx } as any)
           .catch((error) => {
             logger.error({
               message: error.message,

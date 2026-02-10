@@ -455,11 +455,11 @@ export class SyncPrismaRepository implements ISyncRepository {
 
     if (data.statusJt !== undefined) {
       if (data.statusJt === null) {
-        updateData.statusJtId = null;
+        updateData.statusJt = { disconnect: true };
       } else {
         const statusJtId = await this.findOrCreateEnumId('StatusJt', data.statusJt);
         if (statusJtId) {
-          updateData.statusJtId = statusJtId;
+          updateData.statusJt = { connect: { id: statusJtId } };
         }
       }
     }
@@ -467,16 +467,16 @@ export class SyncPrismaRepository implements ISyncRepository {
 
     if (data.statusInstalasi !== undefined) {
       if (data.statusInstalasi === null) {
-        updateData.statusInstalasiId = null;
+        updateData.statusInstalasi = { disconnect: true };
       } else {
         const statusInstalasiId = await this.findOrCreateEnumId('StatusInstalasi', data.statusInstalasi);
         if (statusInstalasiId) {
-          updateData.statusInstalasiId = statusInstalasiId;
+          updateData.statusInstalasi = { connect: { id: statusInstalasiId } };
         }
       }
     }
 
-    if (data.c2r !== undefined) updateData.c2r = data.c2r !== null ? new Prisma.Decimal(data.c2r.toString()) : null;
+    // c2r is a formula field in sheets, don't update it
     if (data.nomorNcx !== undefined) {
       if (data.nomorNcx === null || data.nomorNcx === '') {
         throw new Error('Field "nomorNcx" tidak boleh kosong (relasi master data wajib)');

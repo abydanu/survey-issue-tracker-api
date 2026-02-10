@@ -189,12 +189,12 @@ export class EnumValueService {
           data: {
             enumType,
             value: normalizedValue,
-            displayName: this.generateDisplayName(normalizedValue),
+            displayName: value, // Use original value from sheets as displayName
             isActive: true,
           },
         });
 
-        logger.info(`Auto-created new enum: ${enumType}.${normalizedValue}`);
+        logger.info(`Auto-created new enum: ${enumType}.${normalizedValue} with displayName: ${value}`);
       } catch (error: any) {
         // Handle race condition: another request created it first
         if (error.code === 'P2002') {
