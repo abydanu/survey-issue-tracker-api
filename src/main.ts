@@ -1,7 +1,7 @@
 import app from './app.js';
 import logger from './infrastructure/logging/logger.js';
 
-const port = Number(process.env.PORT);
+const port = Number(process.env.PORT) || 3000;
 
 logger.info(`Server starting on port ${port}`);
 logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);

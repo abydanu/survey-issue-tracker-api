@@ -1,4 +1,4 @@
-// Incremental sync - only sync new/updated/deleted records
+
 import { Prisma } from '../../../generated/prisma/client.js';
 import type { EnumType } from '../application/enum-value.service.js';
 
@@ -26,7 +26,6 @@ export async function incrementalSyncFromSheets(
   try {
     console.log(`Starting incremental sync: ${detailData.length} detail + ${summaryData.length} summary records from sheets`);
 
-    // PRE-PROCESS: Resolve all enum IDs
     const enumCache = new Map<string, string | null>();
     
     const resolveEnumId = async (enumType: EnumType, value: string | null): Promise<string | null> => {
@@ -48,7 +47,6 @@ export async function incrementalSyncFromSheets(
       }
     };
 
-    // Pre-resolve all enums in parallel
     console.log('Pre-resolving enums...');
     const enumPromises: Promise<any>[] = [];
     
@@ -68,7 +66,6 @@ export async function incrementalSyncFromSheets(
     await Promise.all(enumPromises);
     console.log(`Pre-resolved ${enumCache.size} unique enum values`);
 
-    // STEP 1: Get all existing IDs from database
     console.log('Fetching existing records from database...');
     const [existingDetails, existingSummaries] = await Promise.all([
       prisma.newBgesB2BOlo.findMany({
@@ -88,8 +85,6 @@ export async function incrementalSyncFromSheets(
     const existingDetailIds = new Set(existingDetails.map((d: any) => d.idKendala));
     const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
 
-    // STEP 2: Process ALL records with upsert (create or update)
-    // This is more reliable than trying to detect changes
     
     console.log(`Processing ${detailData.length} detail records with upsert...`);
       const BATCH_SIZE = 10;
@@ -107,7 +102,6 @@ export async function incrementalSyncFromSheets(
                 }
 
                 try {
-                  // Use cached enum IDs (no async calls in transaction)
                   const enumFields: any = {};
                   
                   const jenisKendalaId = enumCache.get(`JenisKendala:${detail.jenisKendala}`);
@@ -180,7 +174,6 @@ export async function incrementalSyncFromSheets(
                     },
                   });
                   
-                  // Check if it was created or updated
                   const wasCreated = !existingDetailIds.has(detail.idKendala.trim());
                   if (wasCreated) {
                     stats.created++;
@@ -201,7 +194,6 @@ export async function incrementalSyncFromSheets(
         }
       }
 
-    // STEP 3: Process ALL summary records with upsert
     if (summaryData.length > 0) {
       console.log(`Processing ${summaryData.length} summary records with upsert...`);
       const BATCH_SIZE = 10;
@@ -222,13 +214,11 @@ export async function incrementalSyncFromSheets(
                 }
 
                 try {
-                  // Try to find master by nomorNcx first, then by name
                   let existingMaster = await tx.newBgesB2BOlo.findUnique({
                     where: { idKendala: nomorNcx },
                     select: { idKendala: true }
                   });
 
-                  // If not found by nomorNcx, try to find by name (matching logic from summary)
                   if (!existingMaster && summary.namaPelanggan) {
                     existingMaster = await tx.newBgesB2BOlo.findFirst({
                       where: {
@@ -242,7 +232,6 @@ export async function incrementalSyncFromSheets(
                     
                     if (existingMaster) {
                       console.log(`Matched summary ${nomorNcx} to master ${existingMaster.idKendala} by name: ${summary.namaPelanggan}`);
-                      // Update nomorNcx to use the found idKendala from master data
                       nomorNcx = existingMaster.idKendala;
                     }
                   }
@@ -250,7 +239,6 @@ export async function incrementalSyncFromSheets(
                   if (!existingMaster) {
                     console.log(`Master data not found for ${nomorNcx}, creating it...`);
                     
-                    // Create master data from summary info
                     const masterEnumFields: any = {};
                     
                     const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);

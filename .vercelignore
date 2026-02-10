@@ -1,0 +1,9 @@
+node_modules
+.env.local
+.env.example
+*.log
+.git
+.gitignore
+README.md
+Dockerfile
+bun.lock

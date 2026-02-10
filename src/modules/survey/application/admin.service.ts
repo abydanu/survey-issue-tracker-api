@@ -198,11 +198,13 @@ export class AdminService {
       }
 
       const no = existing.no;
+      const idKendala = existing.idKendala;
 
       await this.syncRepo.deleteSurvey(nomorNcx);
 
       // Sync to sheets (skip if flag is set for Vercel timeout protection)
       if (!this.skipSheetSync) {
+        // Delete from summary sheet (Sheet 1 - NDE USULAN B2B)
         this.syncService
           .syncToSheets("delete", "summary", { no, nomorNcx } as any)
           .catch((error) => {
@@ -213,11 +215,24 @@ export class AdminService {
               no
             }, `Non-blocking sync to sheets failed for deleted survey ${nomorNcx}`);
           });
+
+        // Delete from detail sheet (Sheet 2 - NEW BGES B2B & OLO) if idKendala exists
+        if (idKendala) {
+          this.syncService
+            .syncToSheets("delete", "detail", { idKendala } as any)
+            .catch((error) => {
+              logger.error({
+                message: error.message,
+                stack: error.stack,
+                idKendala
+              }, `Non-blocking sync to sheets failed for deleted master data ${idKendala}`);
+            });
+        }
       } else {
         logger.info(`Sheet sync skipped (Vercel timeout protection enabled)`);
       }
 
-      logger.info(`Admin deleted survey: nomorNcx ${nomorNcx} (no: ${no})`);
+      logger.info(`Admin deleted survey: nomorNcx ${nomorNcx} (no: ${no}, idKendala: ${idKendala})`);
     } catch (error: any) {
       logger.error({ 
         message: error.message, 

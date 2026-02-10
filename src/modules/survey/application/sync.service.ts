@@ -220,7 +220,7 @@ export class SyncService {
     }
   }
 
-  async autoSyncFromSheets(): Promise<{
+  async autoSyncFromSheets(skipEnumUpdate: boolean = false): Promise<{
     success: boolean;
     message: string;
     totalRecords: number;
@@ -237,6 +237,20 @@ export class SyncService {
     try {
       logger.info("Starting incremental sync from Google Sheets...");
 
+      // Step 1: Auto-update displayNames from sheets (optional)
+      if (!skipEnumUpdate) {
+        logger.info("Auto-updating enum displayNames from Google Sheets...");
+        try {
+          await this.getEnumValueService().autoUpdateDisplayNamesFromSheets();
+          logger.info("Enum displayNames updated successfully");
+        } catch (enumError: any) {
+          logger.warn({ message: enumError.message }, "Failed to auto-update enum displayNames, continuing with sync...");
+        }
+      } else {
+        logger.info("Skipping enum displayNames update (skipEnumUpdate=true)");
+      }
+
+      // Step 2: Fetch data from Google Sheets
       logger.info("Fetching data from Google Sheets...");
       const summaryData = await this.getGoogleSheets().readSummaryData();
       const detailData = await this.getGoogleSheets().readDetailData();
@@ -245,7 +259,7 @@ export class SyncService {
 
       const totalRecords = summaryData.length + detailData.length;
 
-      // Use incremental sync (only new/updated/deleted)
+      // Step 3: Use incremental sync (only new/updated/deleted)
       const { incrementalSyncFromSheets } = await import('../infrastructure/sync-incremental.js');
       
       const syncStats = await incrementalSyncFromSheets(
@@ -255,7 +269,7 @@ export class SyncService {
         detailData
       );
 
-      // Fix null dates by matching customer names
+      // Step 4: Fix null dates by matching customer names
       const { fixNullDatesFromDetailSheet } = await import('../infrastructure/sync-fix-dates.js');
       const fixResult = await fixNullDatesFromDetailSheet(prisma, detailData);
       
@@ -263,7 +277,7 @@ export class SyncService {
         logger.info(`Fixed ${fixResult.fixed} records with null tanggal by matching customer names`);
       }
 
-      // Auto-create missing summaries for master data
+      // Step 5: Auto-create missing summaries for master data
       const { createMissingSummaries } = await import('../infrastructure/sync-create-missing-summaries.js');
       const summaryResult = await createMissingSummaries(prisma);
       

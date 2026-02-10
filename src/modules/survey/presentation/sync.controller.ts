@@ -193,8 +193,49 @@ export class SyncController {
       logger.info('Starting optimized sync from Google Sheets...');
 
       const startTime = Date.now();
+      const backgroundParam = c.req.query('background');
+      const skipEnumParam = c.req.query('skipEnum');
+      const runInBackground = backgroundParam === 'true' || backgroundParam === '1';
+      const skipEnumUpdate = skipEnumParam === 'true' || skipEnumParam === '1';
+
+      // If background mode, return immediately and process async
+      if (runInBackground) {
+        // Start sync in background (non-blocking)
+        this.syncService.autoSyncFromSheets(skipEnumUpdate)
+          .then((result) => {
+            const endTime = Date.now();
+            const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
+            logger.info({
+              syncStats: result.syncStats,
+              processingTime,
+              totalRecords: result.totalRecords,
+              processedRecords: result.processedRecords
+            }, 'Background sync completed successfully');
+          })
+          .catch((error) => {
+            logger.error('Background sync error:', error);
+          });
+
+        return c.json({
+          success: true,
+          message: 'Sync started in background. Check /api/sync/status for progress.',
+          data: {
+            status: 'processing',
+            startedAt: new Date().toISOString(),
+            skipEnumUpdate
+          }
+        }, 202);
+      }
+
+      // Normal sync (blocking) - with timeout protection
+      const SYNC_TIMEOUT = 55000; // 55 seconds for Vercel safety
       
-      const result = await this.syncService.autoSyncFromSheets();
+      const syncPromise = this.syncService.autoSyncFromSheets(skipEnumUpdate);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Sync timeout - use ?background=true or ?skipEnum=true for faster sync')), SYNC_TIMEOUT);
+      });
+
+      const result = await Promise.race([syncPromise, timeoutPromise]) as any;
       
       const endTime = Date.now();
       const processingTime = `${((endTime - startTime) / 1000).toFixed(2)}s`;
@@ -203,7 +244,8 @@ export class SyncController {
         syncStats: result.syncStats,
         processingTime,
         totalRecords: result.totalRecords,
-        processedRecords: result.processedRecords
+        processedRecords: result.processedRecords,
+        skipEnumUpdate
       }, 'Sync completed successfully');
 
       return ApiResponseHelper.success(
@@ -213,12 +255,22 @@ export class SyncController {
           totalRecords: result.totalRecords,
           processedRecords: result.processedRecords,
           processingTime,
-          syncedAt: new Date().toISOString()
+          syncedAt: new Date().toISOString(),
+          skipEnumUpdate
         },
         result.message
       );
     } catch (error: any) {
       logger.error('Sync error:', error);
+      
+      if (error.message?.includes('timeout')) {
+        return c.json({
+          success: false,
+          message: 'Sync timeout - try using ?skipEnum=true or ?background=true for faster sync',
+          error: error.message
+        }, 408);
+      }
+      
       return ApiResponseHelper.error(c, error.message || 'Sync failed - please try again');
     }
   };
