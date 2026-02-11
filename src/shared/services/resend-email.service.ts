@@ -1,6 +1,6 @@
 import logger from '../../infrastructure/logging/logger.js';
 
-export interface BrevoEmailConfig {
+export interface ResendEmailConfig {
   apiKey: string;
   senderEmail: string;
   senderName?: string;
@@ -13,43 +13,37 @@ export interface EmailOptions {
   text?: string;
 }
 
-export class BrevoEmailService {
-  private config: BrevoEmailConfig;
-  private apiUrl = 'https://api.brevo.com/v3/smtp/email';
+export class ResendEmailService {
+  private config: ResendEmailConfig;
+  private apiUrl = 'https://api.resend.com/emails';
 
-  constructor(config: BrevoEmailConfig) {
+  constructor(config: ResendEmailConfig) {
     this.config = config;
     logger.info({
       senderEmail: config.senderEmail,
       senderName: config.senderName,
-    }, 'Initializing Brevo email service');
+    }, 'Initializing Resend email service');
   }
 
   async sendEmail(options: EmailOptions): Promise<boolean> {
     const startTime = Date.now();
     try {
-      logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email via Brevo API');
+      logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email via Resend API');
 
       const response = await fetch(this.apiUrl, {
         method: 'POST',
         headers: {
-          'accept': 'application/json',
-          'api-key': this.config.apiKey,
-          'content-type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sender: {
-            email: this.config.senderEmail,
-            name: this.config.senderName || this.config.senderEmail,
-          },
-          to: [
-            {
-              email: options.to,
-            },
-          ],
+          from: this.config.senderName 
+            ? `${this.config.senderName} <${this.config.senderEmail}>`
+            : this.config.senderEmail,
+          to: [options.to],
           subject: options.subject,
-          htmlContent: options.html,
-          textContent: options.text,
+          html: options.html,
+          text: options.text,
         }),
       });
 
@@ -63,16 +57,16 @@ export class BrevoEmailService {
           error: errorData,
           to: options.to,
           duration: `${duration}ms`,
-        }, 'Failed to send email via Brevo API');
+        }, 'Failed to send email via Resend API');
         return false;
       }
 
       const result = await response.json();
       logger.info({
-        messageId: result.messageId,
+        messageId: result.id,
         to: options.to,
         duration: `${duration}ms`,
-      }, 'Email sent successfully via Brevo API');
+      }, 'Email sent successfully via Resend API');
       return true;
     } catch (error: any) {
       const duration = Date.now() - startTime;
@@ -80,7 +74,7 @@ export class BrevoEmailService {
         error: error.message,
         to: options.to,
         duration: `${duration}ms`,
-      }, 'Failed to send email via Brevo API');
+      }, 'Failed to send email via Resend API');
       return false;
     }
   }
