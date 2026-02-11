@@ -127,6 +127,7 @@ export class AdminService {
             ...data,
             no: existing.no,
             nomorNcx: updated.nomorNcx, // Use updated nomorNcx from result
+            namaPelanggan: existing.namaPelanggan, // Add customer name for fallback search
           } as any)
           .catch((error) => {
             logger.error({
@@ -199,6 +200,7 @@ export class AdminService {
 
       const no = existing.no;
       const idKendala = existing.idKendala;
+      const namaPelanggan = existing.namaPelanggan;
 
       await this.syncRepo.deleteSurvey(nomorNcx);
 
@@ -206,7 +208,7 @@ export class AdminService {
       if (!this.skipSheetSync) {
         // Delete from summary sheet (Sheet 1 - NDE USULAN B2B)
         this.syncService
-          .syncToSheets("delete", "summary", { no, nomorNcx } as any)
+          .syncToSheets("delete", "summary", { no, nomorNcx, namaPelanggan } as any)
           .catch((error) => {
             logger.error({
               message: error.message,

@@ -7,6 +7,8 @@ import {
   getChartProfitLossByMonthRoute,
   getStatsRoute,
   syncFromSheetsRoute,
+  fixEnumDisplayNamesRoute,
+  cronSyncRoute,
   updateSurveyRoute,
   deleteSurveyRoute
 } from './sync.openapi.js';
@@ -41,10 +43,15 @@ export const createSyncRoutes = (
     defaultHook: zodErrorHook,
   });
 
+  // Cron endpoint - NO auth middleware (uses x-cron-secret header)
+  syncApp.openapi(cronSyncRoute, syncController.cronSync as any);
+
+  // Other sync endpoints - require auth + admin
   syncApp.use('*', authMiddleware(authService));
   syncApp.use('*', adminMiddleware());
 
   syncApp.openapi(syncFromSheetsRoute, syncController.syncFromSheets as any);
+  syncApp.openapi(fixEnumDisplayNamesRoute, syncController.fixEnumDisplayNames as any);
 
   const adminApp = new OpenAPIHono({
     defaultHook: zodErrorHook,

@@ -126,14 +126,23 @@ export class AuthService {
     await this.authRepo.createPasswordResetOtp(user.id, otp, expiresAt);
 
     const userName = user.name || user.username;
-    const emailSent = await this.emailService.sendPasswordResetOtp(email, otp, userName);
+    
+    // Send email asynchronously (fire and forget)
+    // This prevents blocking the response while waiting for SMTP
+    this.emailService.sendPasswordResetOtp(email, otp, userName)
+      .then((emailSent) => {
+        if (emailSent) {
+          logger.info(`Password reset OTP sent to: ${email} for user: ${userName}`);
+        } else {
+          logger.error(`Failed to send password reset OTP to: ${email}`);
+        }
+      })
+      .catch((error) => {
+        logger.error({ error, email }, 'Error sending password reset OTP');
+      });
 
-    if (emailSent) {
-      logger.info(`Password reset OTP sent to: ${email} for user: ${userName}`);
-    } else {
-      logger.error(`Failed to send password reset OTP to: ${email}`);
-      throw new Error('Failed to send OTP email');
-    }
+    // Return immediately without waiting for email
+    logger.info(`Password reset OTP generated for: ${email}, sending email in background`);
   }
 
   async resendOtp(request: ForgotPasswordRequest): Promise<void> {
@@ -171,14 +180,22 @@ export class AuthService {
 
 
     const userName = user.name || user.username;
-    const emailSent = await this.emailService.sendPasswordResetOtp(email, otp, userName);
+    
+    // Send email asynchronously (fire and forget)
+    this.emailService.sendPasswordResetOtp(email, otp, userName)
+      .then((emailSent) => {
+        if (emailSent) {
+          logger.info(`Password reset OTP resent to: ${email} for user: ${userName}`);
+        } else {
+          logger.error(`Failed to resend password reset OTP to: ${email}`);
+        }
+      })
+      .catch((error) => {
+        logger.error({ error, email }, 'Error resending password reset OTP');
+      });
 
-    if (emailSent) {
-      logger.info(`Password reset OTP resent to: ${email} for user: ${userName}`);
-    } else {
-      logger.error(`Failed to resend password reset OTP to: ${email}`);
-      throw new Error('Failed to send OTP email');
-    }
+    // Return immediately without waiting for email
+    logger.info(`Password reset OTP regenerated for: ${email}, sending email in background`);
   }
 
   async verifyOtp(request: VerifyOtpRequest): Promise<{ valid: boolean; message: string }> {

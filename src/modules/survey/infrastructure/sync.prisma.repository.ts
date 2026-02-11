@@ -184,10 +184,15 @@ export class SyncPrismaRepository implements ISyncRepository {
     };
 
     if (query.search && query.search.trim()) {
+      const searchTerm = query.search.trim();
       where.OR = [
-        { nomorNcx: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
-        { namaPelanggan: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } },
-        { masterData: { idKendala: { contains: query.search.trim(), mode: Prisma.QueryMode.insensitive } } },
+        { nomorNcx: { contains: searchTerm, mode: Prisma.QueryMode.insensitive } },
+        { namaPelanggan: { contains: searchTerm, mode: Prisma.QueryMode.insensitive } },
+        { masterData: { idKendala: { contains: searchTerm, mode: Prisma.QueryMode.insensitive } } },
+        { masterData: { newSc: { contains: searchTerm, mode: Prisma.QueryMode.insensitive } } },
+        { nomorNcx: { equals: searchTerm, mode: Prisma.QueryMode.insensitive } },
+        { masterData: { newSc: { equals: searchTerm, mode: Prisma.QueryMode.insensitive } } },
+        { masterData: { idKendala: { equals: searchTerm, mode: Prisma.QueryMode.insensitive } } },
       ];
     }
 
@@ -278,6 +283,21 @@ export class SyncPrismaRepository implements ISyncRepository {
 
   private mapToSurvey(item: any): Survey {
     const master = item.masterData || {};
+    
+    // Debug logging for specific records
+    if (item.nomorNcx === '1002237835' || item.nomorNcx === '1002235636') {
+      console.log(`[DEBUG] mapToSurvey for ${item.nomorNcx}:`, {
+        'item.statusJt': item.statusJt,
+        'item.statusJt?.value': item.statusJt?.value,
+        'item.alamatInstalasi': item.alamatInstalasi,
+        'item.jenisLayanan': item.jenisLayanan,
+        'item.nilaiKontrak': item.nilaiKontrak,
+        'item.progressJt': item.progressJt,
+        'item.namaOdp': item.namaOdp,
+        'item.jarakOdp': item.jarakOdp,
+      });
+    }
+    
     return {
       id: item.id,
       no: item.no,
@@ -344,7 +364,8 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async findSurveyByNomorNc(nomorNcx: string): Promise<Survey | null> {
-    const survey = await this.prisma.ndeUsulanB2B.findFirst({
+    // Step 1: Try to find by nomorNcx directly
+    let survey = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
       include: {
         masterData: {
@@ -360,6 +381,30 @@ export class SyncPrismaRepository implements ISyncRepository {
         statusInstalasi: true,
       },
     });
+
+    // Step 2: If not found, try to find by master data's newSc
+    if (!survey) {
+      survey = await this.prisma.ndeUsulanB2B.findFirst({
+        where: {
+          masterData: {
+            newSc: nomorNcx
+          }
+        },
+        include: {
+          masterData: {
+            include: {
+              jenisKendala: true,
+              planTematik: true,
+              statusUsulan: true,
+              statusInstalasi: true,
+              keterangan: true,
+            },
+          },
+          statusJt: true,
+          statusInstalasi: true,
+        },
+      });
+    }
 
     if (!survey) return null;
 
@@ -428,8 +473,16 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async updateSurvey(nomorNcx: string, data: UpdateSurveyDto): Promise<Survey> {
-    const existing = await this.prisma.ndeUsulanB2B.findFirst({
-      where: { nomorNcx: nomorNcx },
+    // Use findSurveyByNomorNc which already handles newSc lookup
+    const existing = await this.findSurveyByNomorNc(nomorNcx);
+
+    if (!existing) {
+      throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);
+    }
+
+    // Get the full record with relations for update
+    const existingRecord = await this.prisma.ndeUsulanB2B.findUnique({
+      where: { id: existing.id },
       include: {
         masterData: {
           include: {
@@ -445,7 +498,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       },
     });
 
-    if (!existing) {
+    if (!existingRecord) {
       throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);
     }
 
@@ -511,7 +564,7 @@ export class SyncPrismaRepository implements ISyncRepository {
     const survey = await this.prisma.$transaction(async (tx) => {
 
       const updatedSurvey = await tx.ndeUsulanB2B.update({
-        where: { id: existing.id },
+        where: { id: existingRecord.id },
         data: updateData,
         include: {
           masterData: {
@@ -551,10 +604,10 @@ export class SyncPrismaRepository implements ISyncRepository {
 
         if (Object.keys(masterUpdateData).length > 1) {
           await tx.newBgesB2BOlo.update({
-            where: { idKendala: existing.nomorNcx },
+            where: { idKendala: existingRecord.nomorNcx },
             data: masterUpdateData,
           });
-          console.log(`Synced status from NDE USULAN B2B to NEW BGES B2B for ${existing.nomorNcx}`);
+          console.log(`Synced status from NDE USULAN B2B to NEW BGES B2B for ${existingRecord.nomorNcx}`);
         }
       }
 
@@ -565,9 +618,8 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async deleteSurvey(nomorNcx: string): Promise<void> {
-    const existing = await this.prisma.ndeUsulanB2B.findFirst({
-      where: { nomorNcx: nomorNcx },
-    });
+    // Use findSurveyByNomorNc which already handles newSc lookup
+    const existing = await this.findSurveyByNomorNc(nomorNcx);
 
     if (!existing) {
       throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);

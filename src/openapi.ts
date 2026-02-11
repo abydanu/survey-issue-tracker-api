@@ -11,16 +11,16 @@ export const openApiConfig = {
   },
   servers: [
     {
-      url: 'http://localhost:5000',
-      description: 'Local server',
+      url: 'https://survey-issue-tracker-api-production.up.railway.app',
+      description: 'Production server',
     },
     {
       url: 'https://suited-enormously-donkey.ngrok-free.app',
       description: 'Development server',
     },
     {
-      url: 'https://survey-issue-tracker-api.vercel.app',
-      description: 'Production server',
+      url: 'http://localhost:5000',
+      description: 'Local server',
     },
   ],
   tags: [

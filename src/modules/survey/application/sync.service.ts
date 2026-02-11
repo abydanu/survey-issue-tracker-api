@@ -277,15 +277,9 @@ export class SyncService {
         logger.info(`Fixed ${fixResult.fixed} records with null tanggal by matching customer names`);
       }
 
-      // Step 5: Auto-create missing summaries for master data
-      const { createMissingSummaries } = await import('../infrastructure/sync-create-missing-summaries.js');
-      const summaryResult = await createMissingSummaries(prisma);
-      
-      if (summaryResult.created > 0) {
-        logger.info(`Created ${summaryResult.created} missing summaries for master data`);
-      }
+      // Tidak membuat summary untuk master-only: /api/survey hanya menampilkan data yang ada di sheet NDE USULAN B2B
 
-      const successMessage = `Sync completed! ${syncStats.created} created, ${syncStats.updated} updated, ${syncStats.deleted} deleted${fixResult.fixed > 0 ? `, ${fixResult.fixed} dates fixed` : ''}${summaryResult.created > 0 ? `, ${summaryResult.created} summaries created` : ''}`;
+      const successMessage = `Sync completed! ${syncStats.created} created, ${syncStats.updated} updated, ${syncStats.deleted} deleted${fixResult.fixed > 0 ? `, ${fixResult.fixed} dates fixed` : ''}`;
 
       logger.info(successMessage);
 
@@ -343,10 +337,11 @@ export class SyncService {
 
       if (operation === "delete") {
         if (type === "summary") {
-          const summaryData = data as SurveySummarySheetRow & { nomorNcx?: string };
+          const summaryData = data as SurveySummarySheetRow & { nomorNcx?: string; namaPelanggan?: string };
           await this.getGoogleSheets().deleteSummaryRow(
             summaryData.no,
-            summaryData.nomorNcx
+            summaryData.nomorNcx,
+            summaryData.namaPelanggan
           );
         } else {
           const detailData = data as SurveyDetailSheetRow & {
@@ -485,6 +480,48 @@ export class SyncService {
     } catch (error: any) {
       logger.error("Error validating sync data:", error);
       throw new Error(`Gagal melakukan validasi data sync: ${error.message}`);
+    }
+  }
+
+  async fixEnumDisplayNames(): Promise<{
+    success: boolean;
+    message: string;
+    updated: number;
+  }> {
+    try {
+      logger.info('Fixing enum displayNames (replace underscore with space)...');
+      
+      const enumsWithUnderscore = await prisma.enumValue.findMany({
+        where: {
+          displayName: {
+            contains: '_'
+          }
+        }
+      });
+      
+      logger.info(`Found ${enumsWithUnderscore.length} enums with underscore in displayName`);
+      
+      let updated = 0;
+      for (const enumValue of enumsWithUnderscore) {
+        const cleanDisplayName = enumValue.displayName?.replace(/_/g, ' ') || enumValue.value.replace(/_/g, ' ');
+        
+        await prisma.enumValue.update({
+          where: { id: enumValue.id },
+          data: { displayName: cleanDisplayName }
+        });
+        
+        logger.info(`Updated ${enumValue.enumType}.${enumValue.value}: "${enumValue.displayName}" -> "${cleanDisplayName}"`);
+        updated++;
+      }
+      
+      return {
+        success: true,
+        message: `Fixed ${updated} enum displayNames`,
+        updated
+      };
+    } catch (error: any) {
+      logger.error('Error fixing enum displayNames:', error);
+      throw new Error(`Failed to fix enum displayNames: ${error.message}`);
     }
   }
 }

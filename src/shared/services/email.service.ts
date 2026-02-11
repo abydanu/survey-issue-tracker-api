@@ -30,6 +30,17 @@ export class EmailService {
         user: config.user,
         pass: config.pass,
       },
+      // Add timeout and connection settings for Railway/production
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000, // 10 seconds
+      socketTimeout: 15000, // 15 seconds
+      pool: true, // Use connection pooling
+      maxConnections: 5,
+      maxMessages: 100,
+      // Retry settings
+      tls: {
+        rejectUnauthorized: process.env.NODE_ENV === 'production',
+      },
     });
   }
 
@@ -43,11 +54,17 @@ export class EmailService {
         text: options.text,
       };
 
-      const result = await this.transporter.sendMail(mailOptions);
-      logger.info({ messageId: result.messageId, to: options.to }, 'Email sent successfully:');
+      // Add timeout wrapper (20 seconds total)
+      const sendPromise = this.transporter.sendMail(mailOptions);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Email send timeout after 20 seconds')), 20000);
+      });
+
+      const result = await Promise.race([sendPromise, timeoutPromise]) as any;
+      logger.info({ messageId: result.messageId, to: options.to }, 'Email sent successfully');
       return true;
-    } catch (error) {
-      logger.error({ error }, 'Failed to send email:');
+    } catch (error: any) {
+      logger.error({ error: error.message, to: options.to }, 'Failed to send email');
       return false;
     }
   }

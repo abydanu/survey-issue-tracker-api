@@ -50,6 +50,7 @@ export interface NdeUsulanB2BRow {
   nomorNcx: string;
 
   statusJt?: string | null;
+  statusJtRaw?: string | null; // Original value from sheets for displayName
   c2r?: number | null;
   alamatInstalasi?: string | null;
   jenisLayanan?: string | null;
@@ -71,6 +72,7 @@ export interface NdeUsulanB2BRow {
   rabHld?: bigint | null;
   statusUsulan?: string | null;
   statusInstalasi?: string | null;
+  statusInstalasiRaw?: string | null;
 }
 
 export interface NewBgesB2BOloRow {
@@ -88,6 +90,8 @@ export interface NewBgesB2BOloRow {
 
   jenisKendala?: string | null;
   planTematik?: string | null;
+  jenisKendalaRaw?: string | null;
+  planTematikRaw?: string | null;
 
   rabHld?: bigint | null;
   ihldValue?: bigint | null;
@@ -97,6 +101,9 @@ export interface NewBgesB2BOloRow {
   idEprop?: string | null;
   statusInstalasi?: string | null;
   keterangan?: string | null;
+  statusUsulanRaw?: string | null;
+  statusInstalasiRaw?: string | null;
+  keteranganRaw?: string | null;
   newSc?: string | null;
 
   namaOdp?: string | null;

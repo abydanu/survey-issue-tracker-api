@@ -28,7 +28,7 @@ export async function incrementalSyncFromSheets(
 
     const enumCache = new Map<string, string | null>();
     
-    const resolveEnumId = async (enumType: EnumType, value: string | null): Promise<string | null> => {
+    const resolveEnumId = async (enumType: EnumType, value: string | null, displayName?: string | null): Promise<string | null> => {
       if (!value || value.trim() === '-') return null;
       
       const cacheKey = `${enumType}:${value}`;
@@ -37,11 +37,14 @@ export async function incrementalSyncFromSheets(
       }
       
       try {
-        const id = await enumValueService.findOrCreateEnumValue(enumType, value);
+        // Debug logging for first 3 enum resolutions
+        if (enumCache.size < 3) {
+          console.log(`[ENUM DEBUG] Resolving ${enumType}.${value} with displayName: "${displayName}"`);
+        }
+        const id = await enumValueService.findOrCreateEnumValue(enumType, value, displayName || undefined);
         enumCache.set(cacheKey, id);
         return id;
       } catch (error) {
-        console.warn(`Failed to resolve enum ${enumType}.${value}`);
         enumCache.set(cacheKey, null);
         return null;
       }
@@ -51,33 +54,33 @@ export async function incrementalSyncFromSheets(
     const enumPromises: Promise<any>[] = [];
     
     for (const detail of detailData) {
-      if (detail.jenisKendala) enumPromises.push(resolveEnumId('JenisKendala', detail.jenisKendala));
-      if (detail.planTematik) enumPromises.push(resolveEnumId('PlanTematik', detail.planTematik));
-      if (detail.statusUsulan) enumPromises.push(resolveEnumId('StatusUsulan', detail.statusUsulan));
-      if (detail.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', detail.statusInstalasi));
-      if (detail.keterangan) enumPromises.push(resolveEnumId('Keterangan', detail.keterangan));
+      if (detail.jenisKendala) enumPromises.push(resolveEnumId('JenisKendala', detail.jenisKendala, detail.jenisKendalaRaw ?? undefined));
+      if (detail.planTematik) enumPromises.push(resolveEnumId('PlanTematik', detail.planTematik, detail.planTematikRaw ?? undefined));
+      if (detail.statusUsulan) enumPromises.push(resolveEnumId('StatusUsulan', detail.statusUsulan, detail.statusUsulanRaw ?? undefined));
+      if (detail.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', detail.statusInstalasi, detail.statusInstalasiRaw ?? undefined));
+      if (detail.keterangan) enumPromises.push(resolveEnumId('Keterangan', detail.keterangan, detail.keteranganRaw ?? undefined));
     }
     
     for (const summary of summaryData) {
-      if (summary.statusJt) enumPromises.push(resolveEnumId('StatusJt', summary.statusJt));
-      if (summary.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', summary.statusInstalasi));
+      if (summary.statusJt) enumPromises.push(resolveEnumId('StatusJt', summary.statusJt, summary.statusJtRaw ?? undefined));
+      if (summary.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', summary.statusInstalasi, summary.statusInstalasiRaw ?? undefined));
     }
     
     await Promise.all(enumPromises);
     console.log(`Pre-resolved ${enumCache.size} unique enum values`);
 
-    console.log('Fetching existing records from database...');
+    console.log('Fetching existing records...');
     const [existingDetails, existingSummaries] = await Promise.all([
       prisma.newBgesB2BOlo.findMany({
         select: { 
           idKendala: true,
-          lastSyncAt: true,
+          id: true,
         }
       }),
       prisma.ndeUsulanB2B.findMany({
         select: { 
           nomorNcx: true,
-          lastSyncAt: true,
+          id: true,
         }
       })
     ]);
@@ -86,8 +89,8 @@ export async function incrementalSyncFromSheets(
     const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
 
     
-    console.log(`Processing ${detailData.length} detail records with upsert...`);
-      const BATCH_SIZE = 10;
+    console.log(`Processing ${detailData.length} detail records...`);
+      const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
         const batch = detailData.slice(i, i + BATCH_SIZE);
@@ -194,9 +197,12 @@ export async function incrementalSyncFromSheets(
         }
       }
 
+    // Set of resolved idKendala untuk setiap baris NDE di sheet (supaya delete tidak salah hapus baris yang pakai NEW SC)
+    const sheetSummaryResolvedIds = new Set<string>();
+
     if (summaryData.length > 0) {
-      console.log(`Processing ${summaryData.length} summary records with upsert...`);
-      const BATCH_SIZE = 10;
+      console.log(`Processing ${summaryData.length} summary records...`);
+      const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
         const batch = summaryData.slice(i, i + BATCH_SIZE);
@@ -206,39 +212,64 @@ export async function incrementalSyncFromSheets(
             async (tx: any) => {
               for (const summary of batch) {
                 let nomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim();
-                const no = (summary.no || summary.NO);
+                // NO kadang kosong di sheet (mis. row 259); pakai nomorNcx sebagai fallback agar baris tetap masuk
+                const no = (summary.no ?? summary.NO ?? summary.nomorNcx ?? nomorNcx ?? '').toString().trim();
 
-                if (!no || !nomorNcx) {
+                if (!nomorNcx) {
+                  stats.skipped++;
+                  continue;
+                }
+                if (!no) {
                   stats.skipped++;
                   continue;
                 }
 
                 try {
+                  // Step 1: Cari master by idKendala (kolom Nomer NCX/Starclick di sheet bisa berisi idKendala)
                   let existingMaster = await tx.newBgesB2BOlo.findUnique({
                     where: { idKendala: nomorNcx },
-                    select: { idKendala: true }
+                    select: { idKendala: true, namaPelanggan: true, newSc: true }
                   });
 
-                  if (!existingMaster && summary.namaPelanggan) {
+                  // Step 2: Jika tidak ketemu, cari by newSc (kolom Nomer NCX/Starclick kadang berisi nomor NEW SC)
+                  if (!existingMaster) {
                     existingMaster = await tx.newBgesB2BOlo.findFirst({
-                      where: {
-                        namaPelanggan: {
-                          equals: summary.namaPelanggan.trim(),
-                          mode: 'insensitive'
-                        }
-                      },
-                      select: { idKendala: true }
+                      where: { newSc: nomorNcx },
+                      select: { idKendala: true, namaPelanggan: true, newSc: true }
                     });
                     
                     if (existingMaster) {
-                      console.log(`Matched summary ${nomorNcx} to master ${existingMaster.idKendala} by name: ${summary.namaPelanggan}`);
                       nomorNcx = existingMaster.idKendala;
                     }
                   }
 
-                  if (!existingMaster) {
-                    console.log(`Master data not found for ${nomorNcx}, creating it...`);
+                  // Step 3: Jika masih tidak ketemu dan nomor dari sheet numerik (idKendala/newSC), JANGAN match by nama
+                  // agar summary tetap punya nomorNcx = nilai sheet dan bisa ditemukan saat search (1002249961).
+                  // Match by nama hanya untuk nilai non-numerik (bisa salah link ke master lain).
+                  const sheetNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim() ?? '';
+                  const isNumericNcx = /^\d+$/.test(sheetNomorNcx);
+                  if (!existingMaster && summary.namaPelanggan && !isNumericNcx) {
+                    const customerName = summary.namaPelanggan.trim();
                     
+                    existingMaster = await tx.newBgesB2BOlo.findFirst({
+                      where: {
+                        namaPelanggan: {
+                          equals: customerName,
+                          mode: 'insensitive'
+                        }
+                      },
+                      select: { idKendala: true, namaPelanggan: true, newSc: true }
+                    });
+                    
+                    if (existingMaster) {
+                      nomorNcx = existingMaster.idKendala;
+                    }
+                  }
+
+                  // Simpan idKendala yang dipakai untuk baris ini (untuk logika delete nanti)
+                  sheetSummaryResolvedIds.add(nomorNcx);
+
+                  if (!existingMaster) {
                     const masterEnumFields: any = {};
                     
                     const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
@@ -263,35 +294,51 @@ export async function incrementalSyncFromSheets(
                     });
                   }
 
-                  const statusJtId = enumCache.get(`StatusJt:${summary.statusJt}`);
-                  const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
+                  const statusJtId = summary.statusJt ? enumCache.get(`StatusJt:${summary.statusJt}`) : null;
+                  const statusInstalasiId = summary.statusInstalasi ? enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`) : null;
 
-                  await tx.ndeUsulanB2B.upsert({
+                  // Debug logging for missing statusJt
+                  if (summary.statusJt && !statusJtId) {
+                    console.log(`[WARN] StatusJt not found in cache: "${summary.statusJt}" for ${nomorNcx}`);
+                  }
+
+                  // Debug logging for summary data BEFORE upsert
+                  if (nomorNcx === '1002237835' || nomorNcx === '1002235636') {
+                    console.log(`[DEBUG] BEFORE upsert for ${nomorNcx}:`, {
+                      statusJt: summary.statusJt,
+                      statusJtId,
+                      alamatInstalasi: summary.alamatInstalasi,
+                      jenisLayanan: summary.jenisLayanan,
+                      nilaiKontrak: summary.nilaiKontrak,
+                    });
+                  }
+
+                  const upsertResult = await tx.ndeUsulanB2B.upsert({
                     where: { nomorNcx: nomorNcx },
                     update: {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
-                      statusJtId: statusJtId ?? undefined,
-                      statusInstalasiId: statusInstalasiId ?? undefined,
-                      c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : undefined,
-                      alamatInstalasi: summary.alamatInstalasi ?? undefined,
-                      jenisLayanan: summary.jenisLayanan ?? undefined,
-                      nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : undefined,
-                      rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : undefined,
-                      nomorNde: summary.nomorNde ?? undefined,
-                      progressJt: summary.progressJt ?? undefined,
-                      namaOdp: summary.namaOdp ?? undefined,
-                      jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : undefined,
-                      keterangan: summary.keterangan ?? undefined,
-                      datel: summary.datel ?? undefined,
-                      sto: summary.sto ?? undefined,
-                      namaPelanggan: summary.namaPelanggan ?? undefined,
-                      latitude: summary.latitude ?? undefined,
-                      longitude: summary.longitude ?? undefined,
-                      ihldLopId: summary.ihldLopId ?? undefined,
-                      planTematik: summary.planTematik ?? undefined,
-                      rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : undefined,
-                      statusUsulan: summary.statusUsulan ?? undefined,
+                      statusJtId: statusJtId ?? null,
+                      statusInstalasiId: statusInstalasiId ?? null,
+                      c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
+                      alamatInstalasi: summary.alamatInstalasi ?? null,
+                      jenisLayanan: summary.jenisLayanan ?? null,
+                      nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null,
+                      rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : null,
+                      nomorNde: summary.nomorNde ?? null,
+                      progressJt: summary.progressJt ?? null,
+                      namaOdp: summary.namaOdp ?? null,
+                      jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : null,
+                      keterangan: summary.keterangan ?? null,
+                      datel: summary.datel ?? null,
+                      sto: summary.sto ?? null,
+                      namaPelanggan: summary.namaPelanggan ?? null,
+                      latitude: summary.latitude ?? null,
+                      longitude: summary.longitude ?? null,
+                      ihldLopId: summary.ihldLopId ?? null,
+                      planTematik: summary.planTematik ?? null,
+                      rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
+                      statusUsulan: summary.statusUsulan ?? null,
                     },
                     create: {
                       no: no,
@@ -322,6 +369,17 @@ export async function incrementalSyncFromSheets(
                     },
                   });
                   
+                  // Debug logging AFTER upsert
+                  if (nomorNcx === '1002237835' || nomorNcx === '1002235636') {
+                    console.log(`[DEBUG] AFTER upsert for ${nomorNcx}:`, {
+                      id: upsertResult.id,
+                      statusJtId: upsertResult.statusJtId,
+                      alamatInstalasi: upsertResult.alamatInstalasi,
+                      jenisLayanan: upsertResult.jenisLayanan,
+                      nilaiKontrak: upsertResult.nilaiKontrak?.toString(),
+                    });
+                  }
+                  
                   if (existingSummaryIds.has(nomorNcx)) {
                     stats.updated++;
                   } else {
@@ -342,6 +400,39 @@ export async function incrementalSyncFromSheets(
           console.error(`Error processing summary batch:`, batchError);
           stats.errors += batch.length;
         }
+      }
+    }
+
+    // Delete records that exist in DB but not in sheets
+    const sheetDetailIds = new Set(detailData.map((d: any) => d.idKendala?.trim()).filter(Boolean));
+    // Pakai resolved idKendala (bukan raw dari sheet) supaya baris yang di sheet pakai NEW SC tidak ikut terhapus
+    const detailsToDelete = existingDetails.filter((d: any) => !sheetDetailIds.has(d.idKendala));
+    const summariesToDelete = existingSummaries.filter((s: any) => !sheetSummaryResolvedIds.has(s.nomorNcx));
+    
+    if (summariesToDelete.length > 0 || detailsToDelete.length > 0) {
+      console.log(`Deleting ${summariesToDelete.length} summaries and ${detailsToDelete.length} details...`);
+      
+      try {
+        // Batch delete summaries first (due to foreign key constraint)
+        if (summariesToDelete.length > 0) {
+          const summaryIds = summariesToDelete.map((s: any) => s.id);
+          const deleteResult = await prisma.ndeUsulanB2B.deleteMany({
+            where: { id: { in: summaryIds } }
+          });
+          stats.deleted += deleteResult.count;
+        }
+        
+        // Batch delete details
+        if (detailsToDelete.length > 0) {
+          const detailIds = detailsToDelete.map((d: any) => d.idKendala);
+          const deleteResult = await prisma.newBgesB2BOlo.deleteMany({
+            where: { idKendala: { in: detailIds } }
+          });
+          stats.deleted += deleteResult.count;
+        }
+      } catch (deleteError: any) {
+        console.error('Error during batch delete:', deleteError.message);
+        stats.errors += (summariesToDelete.length + detailsToDelete.length);
       }
     }
 

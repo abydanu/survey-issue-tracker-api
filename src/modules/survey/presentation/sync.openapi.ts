@@ -385,6 +385,76 @@ export const syncFromSheetsRoute = createRoute({
   },
 });
 
+export const fixEnumDisplayNamesRoute = createRoute({
+  method: 'post',
+  path: '/fix-enum-displaynames',
+  tags: ['Sync'],
+  summary: 'Fix Enum DisplayNames',
+  description: 'Replace underscore with space in all enum displayNames (Admin only)',
+  security: [{ bearerAuth: [] }],
+  responses: {
+    200: {
+      description: 'Successfully fixed enum displayNames',
+      content: {
+        'application/json': {
+          schema: ApiSuccessResponseSchema.extend({
+            data: z.object({
+              updated: z.number(),
+            }),
+          }),
+        },
+      },
+    },
+    401: {
+      description: 'Unauthorized',
+      content: {
+        'application/json': {
+          schema: ApiErrorResponseSchema,
+        },
+      },
+    },
+  },
+});
+
+export const cronSyncRoute = createRoute({
+  method: 'post',
+  path: '/cron',
+  tags: ['Sync'],
+  summary: 'Cron Job Sync (No Auth)',
+  description: 'Endpoint untuk external cron job. Sync berjalan di background dengan skip enum update untuk performa optimal. Gunakan CRON_SECRET untuk autentikasi.',
+  request: {
+    headers: z.object({
+      'x-cron-secret': z.string().openapi({
+        description: 'Secret key untuk autentikasi cron job',
+        example: 'your-secret-key-here',
+      }),
+    }),
+  },
+  responses: {
+    202: {
+      description: 'Sync job started in background',
+      content: {
+        'application/json': {
+          schema: z.object({
+            success: z.boolean(),
+            message: z.string(),
+            jobId: z.string(),
+            startedAt: z.string(),
+          }),
+        },
+      },
+    },
+    401: {
+      description: 'Invalid cron secret',
+      content: {
+        'application/json': {
+          schema: ApiErrorResponseSchema,
+        },
+      },
+    },
+  },
+});
+
 export const syncEnumsRoute = createRoute({
   method: 'post',
   path: '/enums/sync',

@@ -7,11 +7,11 @@ logger.info(`Server starting on port ${port}`);
 logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
 logger.info(`API Documentation: http://localhost:${port}/docs`);
 
-// Use Bun.serve for proper HTTP server
 const server = Bun.serve({
   fetch: app.fetch,
   port: port,
-  hostname: '::',
+  hostname: '0.0.0.0',
+  idleTimeout: 255
 });
 
-logger.info(`✅ Server is running on ${server.hostname}:${server.port}`);
+logger.info(`✅ Server is running on 0.0.0.0:${server.port}`);

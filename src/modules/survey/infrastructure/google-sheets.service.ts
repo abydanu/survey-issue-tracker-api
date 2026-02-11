@@ -10,24 +10,24 @@ import type {
 import fs from "fs";
 
 function loadGoogleCredentials(): Record<string, unknown> {
-  // Try base64 encoded JSON first
+
   const base64Json = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64?.trim();
   if (base64Json) {
     try {
       const decoded = Buffer.from(base64Json, 'base64').toString('utf-8');
       const credentials = JSON.parse(decoded) as Record<string, unknown>;
-      
+
       if (typeof credentials.private_key === "string") {
         credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
       }
-      
+
       return credentials;
     } catch (error) {
       throw new Error(`Failed to decode GOOGLE_SERVICE_ACCOUNT_BASE64: ${error}`);
     }
   }
 
-  // Try raw JSON
+
   const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (rawJson) {
     try {
@@ -39,7 +39,7 @@ function loadGoogleCredentials(): Record<string, unknown> {
 
       return credentials;
     } catch (parseError) {
-      // If parse fails, treat as file path
+
       if (fs.existsSync(rawJson)) {
         return JSON.parse(fs.readFileSync(rawJson, "utf-8")) as Record<
           string,
@@ -50,7 +50,7 @@ function loadGoogleCredentials(): Record<string, unknown> {
     }
   }
 
-  // Try file path from GOOGLE_SERVICE_ACCOUNT_PATH
+
   const path = process.env.GOOGLE_SERVICE_ACCOUNT_PATH?.trim();
 
   if (path && fs.existsSync(path)) {
@@ -66,7 +66,7 @@ function loadGoogleCredentials(): Record<string, unknown> {
 
   throw new Error(
     "Google Service Account credentials not found. " +
-      "Set GOOGLE_SERVICE_ACCOUNT_BASE64 (base64 encoded), GOOGLE_SERVICE_ACCOUNT_JSON (raw JSON), atau GOOGLE_SERVICE_ACCOUNT_PATH (file path)."
+    "Set GOOGLE_SERVICE_ACCOUNT_BASE64 (base64 encoded), GOOGLE_SERVICE_ACCOUNT_JSON (raw JSON), atau GOOGLE_SERVICE_ACCOUNT_PATH (file path)."
   );
 }
 
@@ -98,9 +98,9 @@ export class GoogleSheetsService {
     this.summarySheetName = process.env.GOOGLE_SUMMARY_SHEET_NAME as string;
     this.detailSheetName = process.env.GOOGLE_DETAIL_SHEET_NAME as string;
 
-    // Initialize enum cache in background (don't block constructor)
+
     this.loadEnumMappingFromDatabase().catch(() => {
-      // Silently fail, will use static mapping as fallback
+
     });
   }
 
@@ -118,6 +118,7 @@ export class GoogleSheetsService {
     logger.info(`[DEBUG] Looking for summary sheet: "${this.summarySheetName}"`);
     logger.info(`[DEBUG] Looking for detail sheet: "${this.detailSheetName}"`);
 
+    
     const summarySheet = sheets.find(
       (s: any) => s.properties?.title === this.summarySheetName
     );
@@ -127,8 +128,7 @@ export class GoogleSheetsService {
 
     if (!summarySheet || !detailSheet) {
       logger.warn(
-        `Sheet name mismatch. Config summary='${
-          this.summarySheetName
+        `Sheet name mismatch. Config summary='${this.summarySheetName
         }', detail='${this.detailSheetName}'. Available sheets: ${titles.join(
           ", "
         )}`
@@ -157,7 +157,7 @@ export class GoogleSheetsService {
     this.detailSheetName = resolvedDetail.properties.title;
     this.summarySheetId = Number(resolvedSummary.properties.sheetId);
     this.detailSheetId = Number(resolvedDetail.properties.sheetId);
-    
+
     logger.info(`[DEBUG] Resolved summary sheet: "${this.summarySheetName}" (ID: ${this.summarySheetId})`);
     logger.info(`[DEBUG] Resolved detail sheet: "${this.detailSheetName}" (ID: ${this.detailSheetId})`);
   }
@@ -168,6 +168,7 @@ export class GoogleSheetsService {
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
         range: `${this.summarySheetName}!A:W`,
+        valueRenderOption: 'FORMATTED_VALUE',
       });
 
       const rows = response.data.values;
@@ -189,9 +190,9 @@ export class GoogleSheetsService {
       }
       return results;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
-        stack: error.stack 
+      logger.error({
+        message: error.message,
+        stack: error.stack
       }, "Error reading summary data from Google Sheets");
       throw new Error(
         `Gagal membaca data dari Google Sheets: ${error.message}`
@@ -216,6 +217,7 @@ export class GoogleSheetsService {
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
       range: `${this.summarySheetName}!A:W`,
+      valueRenderOption: 'FORMATTED_VALUE',
     });
 
     const rows = response.data.values;
@@ -258,7 +260,7 @@ export class GoogleSheetsService {
 
       console.log(`[DEBUG] Total rows in detail sheet (excluding header): ${dataRows.length}`);
       console.log(`[DEBUG] Checking rows with idKendala (column E)...`);
-      
+
       const results = [];
       let skippedCount = 0;
       const skipReasons: { [key: string]: number } = {
@@ -266,24 +268,24 @@ export class GoogleSheetsService {
         'no_idKendala': 0,
         'idKendala_dash': 0,
       };
-      
+
       for (const [index, row] of dataRows.entries()) {
         const rowNumber = index + 3;
-        
+
         if (!Array.isArray(row) || row.length === 0) {
           skipReasons['empty_row'] = (skipReasons['empty_row'] || 0) + 1;
           skippedCount++;
           continue;
         }
-        
+
         const idKendala = row[4] ? String(row[4]).trim() : '';
         const namaPelanggan = row[8] ? String(row[8]).trim() : 'N/A';
-        
-        // Debug: log first few rows to see column mapping
+
+
         if (rowNumber <= 5) {
           console.log(`[DEBUG] Row ${rowNumber} columns:`, {
             'A(0)': row[0] || 'empty',
-            'B(1)': row[1] || 'empty', 
+            'B(1)': row[1] || 'empty',
             'C(2)': row[2] || 'empty',
             'D(3)': row[3] || 'empty',
             'E(4)': row[4] || 'empty',
@@ -293,7 +295,7 @@ export class GoogleSheetsService {
             'I(8)': row[8] || 'empty',
           });
         }
-        
+
         if (!idKendala || idKendala === '') {
           if (rowNumber <= 10 || (rowNumber > 600 && rowNumber <= 610)) {
             console.log(`[SKIP] Row ${rowNumber}: No idKendala (nama: ${namaPelanggan}, raw row[4]: "${row[4]}")`);
@@ -302,24 +304,24 @@ export class GoogleSheetsService {
           skippedCount++;
           continue;
         }
-        
+
         if (idKendala === '-') {
           skipReasons['idKendala_dash'] = (skipReasons['idKendala_dash'] || 0) + 1;
           skippedCount++;
           continue;
         }
-        
+
         results.push(await this.mapRowToDetail(row, rowNumber));
       }
-      
+
       console.log(`[DEBUG] Detail records processed: ${results.length}, skipped: ${skippedCount}`);
       console.log(`[DEBUG] Skip reasons:`, skipReasons);
-      
+
       return results;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
-        stack: error.stack 
+      logger.error({
+        message: error.message,
+        stack: error.stack
       }, "Error reading detail data from Google Sheets");
       throw new Error(
         `Gagal membaca data dari Google Sheets: ${error.message}`
@@ -330,62 +332,21 @@ export class GoogleSheetsService {
   private async normalizeEnumValue(input: unknown, enumType?: string): Promise<string | null> {
     const raw = String(input ?? "").trim();
     if (!raw) return null;
-    
-    // Load mapping from database if needed
+
+    // Load enum mapping from database
     await this.loadEnumMappingFromDatabase();
 
-    // Try to get from database cache first (reverse mapping)
+    // Try database mapping first (displayName -> value)
     if (enumType && this.reverseEnumMappingCache.has(enumType)) {
       const typeMapping = this.reverseEnumMappingCache.get(enumType)!;
       if (typeMapping.has(raw)) {
-        return typeMapping.get(raw)!;
+        const result = typeMapping.get(raw)!;
+        return result;
       }
     }
 
-    // Fallback to static mapping
-    const staticReverseMapping: Record<string, string> = {
-      // StatusUsulan
-      'Review SDI': 'REVIEW_SDI',
-      'Belum Input': 'BELUM_INPUT',
-      'Review Optima': 'REVIEW_OPTIMA',
-      'Review ED': 'REVIEW_ED',
-      'Cek SDI Regional': 'CEK_SDI_REGIONAL',
-      'Approved': 'APPROVED',
-      'Drop LOP': 'DROP_LOP',
-      'Konfirmasi Ulang': 'KONFIRMASI_ULANG',
-      
-      // StatusInstalasi
-      '1 Review': 'REVIEW',
-      '2 Survey': 'SURVEY',
-      '3 Instalasi': 'INSTALASI',
-      '4 Done Instalasi': 'DONE_INSTALASI',
-      '5 GOLIVE': 'GOLIVE',
-      '6 Cancel': 'CANCEL',
-      '7 Pending': 'PENDING',
-      '8 Kendala': 'KENDALA',
-      
-      // StatusJt
-      'APPROVE': 'APPROVE',
-      'Lanjut Batch 4': 'LANJUT_BATCH_4',
-      'LANJUT BATCH 3': 'LANJUT_BATCH_3',
-      'NOT APPROVE': 'NOT_APPROVE',
-      'DROP BY WITEL': 'DROP_BY_WITEL',
-      'DROP BY AM': 'DROP_BY_AM',
-      'REVENUE KURANG': 'REVENUE_KURANG',
-      'AKI TIDAK LAYAK': 'AKI_TIDAK_LAYAK',
-      'AANWIJZING': 'AANWIJZING',
-      'CANCEL PELANGGAN': 'CANCEL_PELANGGAN',
-      'INPUT PAKET LAIN': 'INPUT_PAKET_LAIN',
-      'GOLIVE': 'GOLIVE',
-      'INSTALL': 'INSTALL',
-      'MENUNGGU NDE TIF': 'MENUNGGU_NDE_TIF',
-    };
-
-    if (staticReverseMapping[raw]) {
-      return staticReverseMapping[raw];
-    }
-
-    // Final fallback: convert to uppercase with underscore
+    // If not found in database, convert to UPPER_SNAKE_CASE as backend value
+    // This will be auto-created by findOrCreateEnumValue with displayName = raw
     return raw
       .toUpperCase()
       .replace(/^\d+\s*/g, "")
@@ -396,9 +357,9 @@ export class GoogleSheetsService {
   private async normalizeStatusInstalasi(input: unknown): Promise<string | null> {
     const raw = String(input ?? "").trim().toUpperCase();
     if (!raw) return null;
-    
+
     const cleaned = raw.replace(/^\d+\s*/g, "");
-    
+
     const mappings: Record<string, string> = {
       "REVIEW": "REVIEW",
       "SURVEY": "SURVEY",
@@ -414,7 +375,7 @@ export class GoogleSheetsService {
       "WAITING PROJECT JPP": "WAITING_PROJECT_JPP",
       "WAITING CB": "WAITING_CB",
     };
-    
+
     const mapped = mappings[cleaned];
     return mapped || await this.normalizeEnumValue(cleaned);
   }
@@ -431,18 +392,18 @@ export class GoogleSheetsService {
   private enumMappingCache: Map<string, Map<string, string>> = new Map();
   private reverseEnumMappingCache: Map<string, Map<string, string>> = new Map();
   private lastEnumCacheUpdate: number = 0;
-  private readonly ENUM_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly ENUM_CACHE_TTL = 5 * 60 * 1000;
   private isLoadingEnumCache: boolean = false;
 
   private async loadEnumMappingFromDatabase(): Promise<void> {
     const now = Date.now();
-    
-    // Skip if cache is still fresh
+
+
     if (now - this.lastEnumCacheUpdate < this.ENUM_CACHE_TTL) {
       return;
     }
 
-    // Skip if already loading (prevent concurrent loads)
+
     if (this.isLoadingEnumCache) {
       return;
     }
@@ -450,11 +411,8 @@ export class GoogleSheetsService {
     this.isLoadingEnumCache = true;
 
     try {
-      // Use the existing prisma instance instead of creating a new one
-      const { default: prisma } = await import('../../../infrastructure/database/prisma.js');
 
-      // Ensure connection is ready with a simple query
-      await prisma.$queryRaw`SELECT 1`;
+      const { default: prisma } = await import('../../../infrastructure/database/prisma.js');
 
       const enumValues = await prisma.enumValue.findMany({
         where: { isActive: true },
@@ -465,24 +423,24 @@ export class GoogleSheetsService {
         },
       });
 
-      // Clear old cache
+
       this.enumMappingCache.clear();
       this.reverseEnumMappingCache.clear();
 
-      // Build mapping cache
+
       for (const enumValue of enumValues) {
         const { enumType, value, displayName } = enumValue;
-        
-        // Skip if no displayName
+
+
         if (!displayName) continue;
 
-        // Forward mapping (backend -> sheets)
+
         if (!this.enumMappingCache.has(enumType)) {
           this.enumMappingCache.set(enumType, new Map());
         }
         this.enumMappingCache.get(enumType)!.set(value, displayName);
 
-        // Reverse mapping (sheets -> backend)
+
         if (!this.reverseEnumMappingCache.has(enumType)) {
           this.reverseEnumMappingCache.set(enumType, new Map());
         }
@@ -491,10 +449,10 @@ export class GoogleSheetsService {
 
       this.lastEnumCacheUpdate = now;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        name: error.name 
+        name: error.name
       }, 'Failed to load enum mapping from database');
     } finally {
       this.isLoadingEnumCache = false;
@@ -503,19 +461,19 @@ export class GoogleSheetsService {
 
   private async denormalizeEnumValue(input: string | null | undefined, enumType?: string): Promise<string> {
     if (!input) return "";
-    
+
     const value = String(input).trim();
-    
-    // Load mapping from database if needed
+
+
     await this.loadEnumMappingFromDatabase();
 
-    // Try to get from database cache first
+
     if (enumType && this.enumMappingCache.has(enumType)) {
       const typeMapping = this.enumMappingCache.get(enumType)!;
       if (typeMapping.has(value)) {
         return typeMapping.get(value)!;
       }
-      // Try case-insensitive
+
       const upperValue = value.toUpperCase();
       for (const [key, val] of typeMapping.entries()) {
         if (key.toUpperCase() === upperValue) {
@@ -524,44 +482,8 @@ export class GoogleSheetsService {
       }
     }
 
-    // Fallback to static mapping for backward compatibility
-    const staticMapping: Record<string, string> = {
-      // StatusUsulan
-      'REVIEW_SDI': 'Review SDI',
-      'BELUM_INPUT': 'Belum Input',
-      'REVIEW_OPTIMA': 'Review Optima',
-      'REVIEW_ED': 'Review ED',
-      'CEK_SDI_REGIONAL': 'Cek SDI Regional',
-      'APPROVED': 'Approved',
-      'APPROVE': 'APPROVE',
-      'NOT_APPROVE': 'NOT APPROVE',
-      'DROP_LOP': 'Drop LOP',
-      'KONFIRMASI_ULANG': 'Konfirmasi Ulang',
-      
-      // StatusInstalasi
-      'REVIEW': '1 Review',
-      'SURVEY': '2 Survey',
-      'INSTALASI': '3 Instalasi',
-      'DONE_INSTALASI': '4 Done Instalasi',
-      'GOLIVE': '5 GOLIVE',
-      'GO_LIVE': '5 GOLIVE',
-      'CANCEL': '6 Cancel',
-      'PENDING': '7 Pending',
-      'KENDALA': '8 Kendala',
-      
-      // StatusJt
-      'LANJUT_BATCH_4': 'Lanjut Batch 4',
-      'LANJUT_BATCH_3': 'LANJUT BATCH 3',
-      'DROP_BY_WITEL': 'DROP BY WITEL',
-      'DROP_BY_AM': 'DROP BY AM',
-      'REVENUE_KURANG': 'REVENUE KURANG',
-      'AKI_TIDAK_LAYAK': 'AKI TIDAK LAYAK',
-      'AANWIJZING': 'AANWIJZING',
-      'CANCEL_PELANGGAN': 'CANCEL PELANGGAN',
-      'INPUT_PAKET_LAIN': 'INPUT PAKET LAIN',
-      'INSTALL': 'INSTALL',
-      'MENUNGGU_NDE_TIF': 'MENUNGGU NDE TIF',
-    };
+
+    const staticMapping: Record<string, string> = {};
 
     if (staticMapping[value]) {
       return staticMapping[value];
@@ -572,7 +494,7 @@ export class GoogleSheetsService {
       return staticMapping[upperValue];
     }
 
-    // Final fallback: replace underscore with space
+
     return value.replace(/_/g, " ").trim();
   }
 
@@ -613,9 +535,9 @@ export class GoogleSheetsService {
 
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
-        stack: error.stack 
+      logger.error({
+        message: error.message,
+        stack: error.stack
       }, "Error finding summary row index");
       return null;
     }
@@ -626,7 +548,7 @@ export class GoogleSheetsService {
       await this.ensureSheetConfigLoaded();
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.summarySheetName}!D:D`, // Column D contains nomorNcx
+        range: `${this.summarySheetName}!D:D`,
       });
 
       const rows = response.data.values || [];
@@ -639,10 +561,37 @@ export class GoogleSheetsService {
 
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
-        stack: error.stack 
+      logger.error({
+        message: error.message,
+        stack: error.stack
       }, "Error finding summary row index by nomorNcx");
+      return null;
+    }
+  }
+
+  private async findSummaryRowIndexByCustomerName(namaPelanggan: string): Promise<number | null> {
+    try {
+      await this.ensureSheetConfigLoaded();
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: `${this.summarySheetName}!G:G`,
+      });
+
+      const rows = response.data.values || [];
+      const dataRows = rows.length < 3 ? [] : rows.slice(2);
+
+      const searchName = String(namaPelanggan).trim().toLowerCase();
+      const idx = dataRows.findIndex((row: any[]) => {
+        const cellValue = String(row[0] ?? "").trim().toLowerCase();
+        return cellValue === searchName;
+      });
+
+      return idx >= 0 ? idx + 3 : null;
+    } catch (error: any) {
+      logger.error({
+        message: error.message,
+        stack: error.stack
+      }, "Error finding summary row index by customer name");
       return null;
     }
   }
@@ -652,7 +601,7 @@ export class GoogleSheetsService {
       await this.ensureSheetConfigLoaded();
       logger.info(`[DEBUG] Searching for idKendala ${idKendala} in sheet: "${this.detailSheetName}"`);
       logger.info(`[DEBUG] Using range: ${this.detailSheetName}!E:E`);
-      
+
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
         range: `${this.detailSheetName}!E:E`,
@@ -660,25 +609,25 @@ export class GoogleSheetsService {
 
       const rows = response.data.values || [];
       logger.info(`[DEBUG] Found ${rows.length} total rows in column E`);
-      
+
       const dataRows = rows.length < 3 ? [] : rows.slice(2);
       const k = String(idKendala).trim();
       const idx = dataRows.findIndex(
         (row: any[]) => String(row[0] ?? "").trim() === k
       );
-      
+
       if (idx >= 0) {
         logger.info(`[DEBUG] Found idKendala at index ${idx}, row number: ${idx + 3}`);
       } else {
         logger.info(`[DEBUG] idKendala ${idKendala} not found in sheet "${this.detailSheetName}"`);
       }
-      
+
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        idKendala 
+        idKendala
       }, "Error finding detail row index");
       return null;
     }
@@ -695,16 +644,22 @@ export class GoogleSheetsService {
 
       let rowIndex: number | null = null;
 
-      // Try to find by 'no' first
+
       if (data.no) {
         logger.info(`Searching for summary row with no: ${data.no}`);
         rowIndex = await this.findSummaryRowIndex(data.no);
       }
 
-      // If not found by 'no', try to find by 'nomorNcx'
+
       if (!rowIndex && data.nomorNcx) {
         logger.info(`Row not found by no, searching by nomorNcx: ${data.nomorNcx}`);
         rowIndex = await this.findSummaryRowIndexByNomorNcx(data.nomorNcx);
+      }
+
+
+      if (!rowIndex && data.namaPelanggan) {
+        logger.info(`Row not found by no/nomorNcx, searching by namaPelanggan: ${data.namaPelanggan}`);
+        rowIndex = await this.findSummaryRowIndexByCustomerName(data.namaPelanggan);
       }
 
       if (!rowIndex) {
@@ -746,10 +701,11 @@ export class GoogleSheetsService {
         const value = await this.denormalizeEnumValue(data.statusJt, 'StatusJt');
         setCell("B", value);
       }
-      if (data.nomorNcx !== undefined) {
-        const nomorNcxValue = data.nomorNcx ?? "";
-        setCell("D", nomorNcxValue);
-      }
+
+
+
+
+
       if (data.alamatInstalasi !== undefined)
         setCell("J", data.alamatInstalasi ?? "");
       if (data.jenisLayanan !== undefined)
@@ -789,8 +745,8 @@ export class GoogleSheetsService {
       logger.info(`Updated summary row ${rowIndex} (no: ${data.no}, nomorNcx: ${data.nomorNcx})`);
       return true;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
         no: data.no,
         nomorNcx: data.nomorNcx
@@ -807,43 +763,43 @@ export class GoogleSheetsService {
       logger.info(`[DEBUG] updateDetailRow called for idKendala: ${data.idKendala}`);
       logger.info(`[DEBUG] Target sheet name: "${this.detailSheetName}"`);
       logger.info(`[DEBUG] Target sheet ID: ${this.detailSheetId}`);
-      
+
       if (!data.idKendala) {
         throw new Error('Field "idKendala" diperlukan untuk update');
       }
 
       const rowIndex = await this.findDetailRowIndex(data.idKendala);
-      
+
       if (!rowIndex) {
         logger.warn(`Row not found for idKendala ${data.idKendala} in detail sheet. Skipping update to avoid corruption.`);
         return false;
       }
 
-      // First, read the existing row to verify we're targeting the correct row
+
       const verifyRange = `'${this.detailSheetName}'!E${rowIndex}`;
       logger.info(`[DEBUG] Verifying row by reading: ${verifyRange}`);
-      
+
       const verifyResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
         range: verifyRange,
       });
-      
+
       const verifyValue = verifyResponse.data.values?.[0]?.[0];
       logger.info(`[DEBUG] Verification - Expected idKendala: ${data.idKendala}, Found: ${verifyValue}`);
-      
+
       if (String(verifyValue).trim() !== String(data.idKendala).trim()) {
         logger.error(`[ERROR] Row verification failed! Expected ${data.idKendala} but found ${verifyValue}. Aborting update to prevent corruption.`);
         return false;
       }
 
       const fullRow = await this.mapDetailToRow(data);
-      // Skip first element (column A) to preserve row numbers
+
       const rowDataToUpdate = fullRow.slice(1);
-      
+
       const updateRange = `'${this.detailSheetName}'!B${rowIndex}:U${rowIndex}`;
       logger.info(`[DEBUG] Updating range: ${updateRange}`);
-      
-      // Use values.update API with explicit range including sheet name in quotes
+
+
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
         range: updateRange,
@@ -853,12 +809,12 @@ export class GoogleSheetsService {
         },
       });
 
-      // Verify the update was successful
+
       const postVerifyResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
         range: verifyRange,
       });
-      
+
       const postVerifyValue = postVerifyResponse.data.values?.[0]?.[0];
       logger.info(`[DEBUG] Post-update verification - idKendala still: ${postVerifyValue}`);
 
@@ -867,10 +823,10 @@ export class GoogleSheetsService {
       );
       return true;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        idKendala: data.idKendala 
+        idKendala: data.idKendala
       }, "Error updating detail row in Google Sheets");
       throw new Error(
         `Gagal mengupdate data di Google Sheets: ${error.message}`
@@ -895,10 +851,10 @@ export class GoogleSheetsService {
       logger.info(`Appended summary row for no: ${data.no}`);
       return true;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        no: data.no 
+        no: data.no
       }, "Error appending summary row to Google Sheets");
       throw new Error(
         `Gagal menambahkan data ke Google Sheets: ${error.message}`
@@ -923,10 +879,10 @@ export class GoogleSheetsService {
       logger.info(`Appended detail row for idKendala: ${data.idKendala || ""}`);
       return true;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        idKendala: data.idKendala 
+        idKendala: data.idKendala
       }, "Error appending detail row to Google Sheets");
       throw new Error(
         `Gagal menambahkan data ke Google Sheets: ${error.message}`
@@ -934,27 +890,33 @@ export class GoogleSheetsService {
     }
   }
 
-  async deleteSummaryRow(no: string, nomorNcx?: string): Promise<boolean> {
+  async deleteSummaryRow(no: string, nomorNcx?: string, namaPelanggan?: string): Promise<boolean> {
     try {
       await this.ensureSheetConfigLoaded();
-      
+
       let rowIndex: number | null = null;
 
-      // Try to find by 'no' first
+
       if (no) {
         logger.info(`Searching for summary row to delete with no: ${no}`);
         rowIndex = await this.findSummaryRowIndex(no);
       }
 
-      // If not found by 'no', try to find by 'nomorNcx'
+
       if (!rowIndex && nomorNcx) {
         logger.info(`Row not found by no, searching by nomorNcx: ${nomorNcx}`);
         rowIndex = await this.findSummaryRowIndexByNomorNcx(nomorNcx);
       }
 
+
+      if (!rowIndex && namaPelanggan) {
+        logger.info(`Row not found by no/nomorNcx, searching by namaPelanggan: ${namaPelanggan}`);
+        rowIndex = await this.findSummaryRowIndexByCustomerName(namaPelanggan);
+      }
+
       if (!rowIndex) {
         throw new Error(
-          `Data dengan no ${no}${nomorNcx ? ` atau nomorNcx ${nomorNcx}` : ''} tidak ditemukan di Google Sheets`
+          `Data dengan no ${no}${nomorNcx ? ` atau nomorNcx ${nomorNcx}` : ''}${namaPelanggan ? ` atau nama ${namaPelanggan}` : ''} tidak ditemukan di Google Sheets`
         );
       }
 
@@ -983,8 +945,8 @@ export class GoogleSheetsService {
       logger.info(`Deleted summary row ${rowIndex} (no: ${no}, nomorNcx: ${nomorNcx})`);
       return true;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
         no,
         nomorNcx
@@ -1030,10 +992,10 @@ export class GoogleSheetsService {
       logger.info(`Deleted detail row ${rowIndex} for idKendala: ${idKendala}`);
       return true;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        idKendala 
+        idKendala
       }, "Error deleting detail row from Google Sheets");
       throw new Error(
         `Gagal menghapus data dari Google Sheets: ${error.message}`
@@ -1057,7 +1019,7 @@ export class GoogleSheetsService {
       if (nilaiStr) {
         try {
           nilaiKontrak = BigInt(nilaiStr);
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -1076,7 +1038,7 @@ export class GoogleSheetsService {
       if (rabStr) {
         try {
           rabHld = BigInt(rabStr);
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -1086,7 +1048,7 @@ export class GoogleSheetsService {
       if (rabStr) {
         try {
           rabSurvey = BigInt(rabStr);
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -1100,12 +1062,27 @@ export class GoogleSheetsService {
     }
 
     return {
-      no: this.normalizeNo(row[0], rowNumber - 1),
+      no: this.normalizeNo(row[0], rowNumber),
       nomorNcx: String(row[3] || "")
         .trim()
         .replace(/^'/, ""),
 
       statusJt: await this.normalizeEnumValue(row[1], 'StatusJt') as any,
+      statusJtRaw: (() => {
+        const rawValue = row[1];
+        const trimmedValue = rawValue ? String(rawValue).trim() : undefined;
+        // Debug logging for first 5 rows
+        if (rowNumber <= 5) {
+          console.log(`[SHEET DEBUG] Row ${rowNumber} StatusJt:`, {
+            rawValue: rawValue,
+            type: typeof rawValue,
+            trimmed: trimmedValue,
+            hasSpace: trimmedValue?.includes(' '),
+            hasUnderscore: trimmedValue?.includes('_')
+          });
+        }
+        return trimmedValue;
+      })(),
       c2r,
       alamatInstalasi: row[9] ? String(row[9]).trim() : null,
       jenisLayanan: row[10] ? String(row[10]).trim() : null,
@@ -1126,7 +1103,8 @@ export class GoogleSheetsService {
       planTematik: row[13] ? String(row[13]).trim() : null,
       rabHld,
       statusUsulan: row[17] ? String(row[17]).trim() : null,
-      statusInstalasi: await this.normalizeStatusInstalasi(row[18]) as any
+      statusInstalasi: await this.normalizeStatusInstalasi(row[18]) as any,
+      statusInstalasiRaw: row[18] ? String(row[18]).trim() : undefined,
     };
   }
 
@@ -1134,12 +1112,12 @@ export class GoogleSheetsService {
     let tglInputUsulan: Date | null = null;
     if (row[3]) {
       const dateStr = String(row[3]).trim();
-      
-      // Debug log untuk tanggal
+
+
       if (rowNumber <= 5) {
         console.log(`[DEBUG] Row ${rowNumber} - Tanggal Input (col D/row[3]): "${dateStr}"`);
       }
-      
+
       if (dateStr && dateStr !== '-' && dateStr !== '') {
         try {
           if (dateStr.includes("/")) {
@@ -1148,23 +1126,23 @@ export class GoogleSheetsService {
               const month = parts[0] ? parseInt(parts[0], 10) : 1;
               const day = parts[1] ? parseInt(parts[1], 10) : 1;
               let year = parts[2] ? parseInt(parts[2], 10) : new Date().getFullYear();
-              
-              // Handle 2-digit year (e.g., 24 -> 2024)
+
+
               if (year < 100) {
                 year += year < 50 ? 2000 : 1900;
               }
-              
-              // PERBAIKAN: Parse sebagai UTC untuk menghindari timezone shift
-              // Format: YYYY-MM-DD akan di-parse sebagai UTC midnight
+
+
+
               const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
               tglInputUsulan = new Date(isoDateStr);
-              
-              // Debug log
+
+
               if (rowNumber <= 5) {
                 console.log(`[DEBUG] Row ${rowNumber} - Parsed: ${dateStr} -> ${isoDateStr} -> ${tglInputUsulan}`);
               }
-              
-              // Validate the date is reasonable
+
+
               if (isNaN(tglInputUsulan.getTime()) || year < 2000 || year > 2100) {
                 console.warn(`Invalid date parsed from "${dateStr}" at row ${rowNumber}: ${tglInputUsulan}`);
                 tglInputUsulan = null;
@@ -1174,7 +1152,7 @@ export class GoogleSheetsService {
               if (isNaN(tglInputUsulan.getTime())) tglInputUsulan = null;
             }
           } else {
-            // Try parsing as ISO date or other format
+
             tglInputUsulan = new Date(dateStr);
             if (isNaN(tglInputUsulan.getTime())) tglInputUsulan = null;
           }
@@ -1183,7 +1161,7 @@ export class GoogleSheetsService {
           tglInputUsulan = null;
         }
       } else {
-        // Debug: tanggal kosong
+
         if (rowNumber <= 5) {
           console.log(`[DEBUG] Row ${rowNumber} - Tanggal kosong atau '-'`);
         }
@@ -1198,8 +1176,8 @@ export class GoogleSheetsService {
         umur = parsed;
       }
     }
-    
-    // Log jika tanggal null padahal ada idKendala
+
+
     if (!tglInputUsulan && row[4] && String(row[4]).trim()) {
       console.warn(`[WARNING] Row ${rowNumber} - idKendala: ${String(row[4]).trim()} has NULL tanggal input. Raw value: "${row[3]}"`);
     }
@@ -1210,7 +1188,7 @@ export class GoogleSheetsService {
       if (rabStr) {
         try {
           rabHld = BigInt(rabStr);
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -1220,7 +1198,7 @@ export class GoogleSheetsService {
       if (ihldStr) {
         try {
           ihldValue = BigInt(ihldStr);
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -1241,6 +1219,8 @@ export class GoogleSheetsService {
 
       jenisKendala: await this.normalizeEnumValue(row[11], 'JenisKendala') as any,
       planTematik: await this.normalizeEnumValue(row[12], 'PlanTematik') as any,
+      jenisKendalaRaw: row[11] ? String(row[11]).trim() : undefined,
+      planTematikRaw: row[12] ? String(row[12]).trim() : undefined,
 
       rabHld,
       ihldValue,
@@ -1250,6 +1230,9 @@ export class GoogleSheetsService {
       idEprop: row[17] ? String(row[17]).trim() : null,
       statusInstalasi: await this.normalizeStatusInstalasi(row[18]) as any,
       keterangan: await this.normalizeEnumValue(row[19], 'Keterangan') as any,
+      statusUsulanRaw: row[15] ? String(row[15]).trim() : undefined,
+      statusInstalasiRaw: row[18] ? String(row[18]).trim() : undefined,
+      keteranganRaw: row[19] ? String(row[19]).trim() : undefined,
       newSc: row[20] ? String(row[20]).trim() : null,
 
       namaOdp: null,
@@ -1263,11 +1246,11 @@ export class GoogleSheetsService {
   }
 
   private async mapSummaryToRow(data: Partial<NdeUsulanB2BRow>): Promise<any[]> {
-    // Format c2r as percentage (e.g., 0.85 -> "85%")
-    const c2rValue = data.c2r !== null && data.c2r !== undefined 
+
+    const c2rValue = data.c2r !== null && data.c2r !== undefined
       ? `${(Number(data.c2r) * 100).toFixed(0)}%`
       : "0";
-    
+
     return [
       data.no || "",
       await this.denormalizeEnumValue(data.statusJt, 'StatusJt'),
@@ -1296,17 +1279,17 @@ export class GoogleSheetsService {
   }
 
   private async mapDetailToRow(data: Partial<NewBgesB2BOloRow>): Promise<any[]> {
-    // Helper to format date as m/d/yyyy without timezone shift
+
     const formatDate = (date: Date | null | undefined): string => {
       if (!date) return "";
       const d = new Date(date);
-      // Use UTC components to avoid timezone shift
+
       const month = d.getUTCMonth() + 1;
       const day = d.getUTCDate();
       const year = d.getUTCFullYear();
       return `${month}/${day}/${year}`;
     };
-    
+
     return [
       "",
       data.umur?.toString() || "",

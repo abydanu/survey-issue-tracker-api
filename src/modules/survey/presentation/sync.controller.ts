@@ -227,8 +227,7 @@ export class SyncController {
         }, 202);
       }
 
-      // Normal sync (blocking) - with timeout protection
-      const SYNC_TIMEOUT = 55000; // 55 seconds for Vercel safety
+      const SYNC_TIMEOUT = 55000; 
       
       const syncPromise = this.syncService.autoSyncFromSheets(skipEnumUpdate);
       const timeoutPromise = new Promise((_, reject) => {
@@ -414,6 +413,68 @@ export class SyncController {
         return ApiResponseHelper.error(c, error.message, 400);
       }
       return ApiResponseHelper.error(c, 'Failed to update tanggal input');
+    }
+  };
+
+  cronSync = async (c: Context) => {
+    try {
+      // Validate cron secret
+      const cronSecret = c.req.header('x-cron-secret');
+      const expectedSecret = process.env.CRON_SECRET || 'change-this-secret-in-production';
+      
+      if (!cronSecret || cronSecret !== expectedSecret) {
+        logger.warn('Invalid cron secret attempt');
+        return c.json({
+          success: false,
+          message: 'Invalid cron secret',
+        }, 401);
+      }
+      
+      const jobId = `sync-${Date.now()}`;
+      const startedAt = new Date().toISOString();
+      
+      logger.info(`[CRON] Sync job ${jobId} started at ${startedAt}`);
+
+      // Run sync in background (fire and forget)
+      // Always skip enum update for faster cron sync
+      this.syncService.autoSyncFromSheets(true)
+        .then((result) => {
+          logger.info({
+            message: `[CRON] Sync job ${jobId} completed successfully`,
+            syncStats: result.syncStats,
+          });
+        })
+        .catch((error: any) => {
+          logger.error({
+            message: `[CRON] Sync job ${jobId} failed`,
+            error: error.message,
+            stack: error.stack,
+          });
+        });
+
+      // Return immediately
+      return c.json({
+        success: true,
+        message: 'Sync job started in background',
+        jobId,
+        startedAt,
+      }, 202);
+    } catch (error: any) {
+      logger.error('[CRON] Error starting sync job:', error);
+      return c.json({
+        success: false,
+        message: error.message || 'Failed to start sync job',
+      }, 500);
+    }
+  };
+
+  fixEnumDisplayNames = async (c: Context) => {
+    try {
+      const result = await this.syncService.fixEnumDisplayNames();
+      return ApiResponseHelper.success(c, result, 'Successfully fixed enum displayNames');
+    } catch (error: any) {
+      logger.error('Fix enum displayNames error:', error);
+      return ApiResponseHelper.error(c, 'Failed to fix enum displayNames');
     }
   };
 }

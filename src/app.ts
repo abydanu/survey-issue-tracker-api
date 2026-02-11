@@ -24,14 +24,9 @@ export const createApp = () => {
     description: 'Enter Bearer token',
   });
 
-  app.use('*', async(c, next) => {
-    c.req.raw.headers.set('ngrok-skip-browser-warning', 'true');
-    await next();
-  });
-
   app.use('*', cors({
     origin: (origin) => {
-      const allowed = ['http://localhost:3000', 'http://localhost:5000', 'https://suited-enormously-donkey.ngrok-free.app', 'https://survey-issue-tracker.vercel.app', 'https://survey-issue-tracker-api-production.up.railway.app'];
+      const allowed = ['https://survey-issue-tracker.vercel.app', 'https://survey-issue-tracker-api-production.up.railway.app'];
       if (!origin) return allowed[0];
       if (allowed.includes(origin)) return origin;
       if (origin.endsWith('.vercel.app')) return origin;

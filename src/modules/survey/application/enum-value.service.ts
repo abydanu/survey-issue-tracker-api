@@ -164,7 +164,7 @@ export class EnumValueService {
     return result;
   }
 
-  async findOrCreateEnumValue(enumType: EnumType, value: string): Promise<string> {
+  async findOrCreateEnumValue(enumType: EnumType, value: string, displayName?: string): Promise<string> {
     if (!value) {
       throw new Error(`Value cannot be empty for enum type ${enumType}`);
     }
@@ -185,16 +185,19 @@ export class EnumValueService {
 
     if (!enumValue) {
       try {
+        // Convert underscore to space for displayName, keep UPPERCASE
+        const cleanDisplayName = displayName ? displayName.replace(/_/g, ' ') : normalizedValue.replace(/_/g, ' ');
+        
         enumValue = await prisma.enumValue.create({
           data: {
             enumType,
             value: normalizedValue,
-            displayName: value, // Use original value from sheets as displayName
+            displayName: cleanDisplayName,
             isActive: true,
           },
         });
 
-        logger.info(`Auto-created new enum: ${enumType}.${normalizedValue} with displayName: ${value}`);
+        logger.info(`Auto-created new enum: ${enumType}.${normalizedValue} with displayName: ${cleanDisplayName}`);
       } catch (error: any) {
         // Handle race condition: another request created it first
         if (error.code === 'P2002') {
@@ -215,6 +218,21 @@ export class EnumValueService {
           }
         } else {
           throw error;
+        }
+      }
+    } else if (displayName && enumValue.displayName !== displayName) {
+      // Update displayName: convert underscore to space, keep UPPERCASE
+      const cleanDisplayName = displayName.replace(/_/g, ' ');
+      if (enumValue.displayName !== cleanDisplayName) {
+        try {
+          console.log(`[ENUM UPDATE] ${enumType}.${normalizedValue}: "${enumValue.displayName}" -> "${cleanDisplayName}"`);
+          enumValue = await prisma.enumValue.update({
+            where: { id: enumValue.id },
+            data: { displayName: cleanDisplayName },
+          });
+          logger.info(`Updated displayName for ${enumType}.${normalizedValue}: ${cleanDisplayName}`);
+        } catch (error: any) {
+          logger.warn(`Failed to update displayName for ${enumType}.${normalizedValue}:`, error);
         }
       }
     }
