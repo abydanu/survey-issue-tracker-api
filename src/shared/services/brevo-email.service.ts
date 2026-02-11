@@ -1,12 +1,9 @@
-import nodemailer from 'nodemailer';
 import logger from '../../infrastructure/logging/logger.js';
 
-export interface EmailConfig {
-  host: string;
-  port: number;
-  user: string;
-  pass: string;
-  from: string;
+export interface BrevoEmailConfig {
+  apiKey: string;
+  senderEmail: string;
+  senderName?: string;
 }
 
 export interface EmailOptions {
@@ -16,81 +13,74 @@ export interface EmailOptions {
   text?: string;
 }
 
-export class EmailService {
-  private transporter: nodemailer.Transporter;
-  private config: EmailConfig;
+export class BrevoEmailService {
+  private config: BrevoEmailConfig;
+  private apiUrl = 'https://api.brevo.com/v3/smtp/email';
 
-  constructor(config: EmailConfig) {
+  constructor(config: BrevoEmailConfig) {
     this.config = config;
-    
-    // Log configuration (without sensitive data)
     logger.info({
-      host: config.host,
-      port: config.port,
-      secure: config.port === 465,
-      from: config.from,
-      user: config.user,
-    }, 'Initializing email service');
-    
-    this.transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.port === 465, 
-      auth: {
-        user: config.user,
-        pass: config.pass,
-      },
-      // Add timeout and connection settings for Railway/production
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 10000, // 10 seconds
-      socketTimeout: 15000, // 15 seconds
-      pool: true, // Use connection pooling
-      maxConnections: 5,
-      maxMessages: 100,
-      // Retry settings
-      tls: {
-        rejectUnauthorized: process.env.NODE_ENV === 'production',
-      },
-      // Add debug logging
-      logger: process.env.NODE_ENV !== 'production',
-      debug: process.env.NODE_ENV !== 'production',
-    });
+      senderEmail: config.senderEmail,
+      senderName: config.senderName,
+    }, 'Initializing Brevo email service');
   }
 
   async sendEmail(options: EmailOptions): Promise<boolean> {
     const startTime = Date.now();
     try {
-      logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email');
-      
-      const mailOptions = {
-        from: this.config.from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      };
+      logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email via Brevo API');
 
-      // Add timeout wrapper (20 seconds total)
-      const sendPromise = this.transporter.sendMail(mailOptions);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Email send timeout after 20 seconds')), 20000);
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': this.config.apiKey,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: {
+            email: this.config.senderEmail,
+            name: this.config.senderName || this.config.senderEmail,
+          },
+          to: [
+            {
+              email: options.to,
+            },
+          ],
+          subject: options.subject,
+          htmlContent: options.html,
+          textContent: options.text,
+        }),
       });
 
-      const result = await Promise.race([sendPromise, timeoutPromise]) as any;
       const duration = Date.now() - startTime;
-      logger.info({ messageId: result.messageId, to: options.to, duration: `${duration}ms` }, 'Email sent successfully');
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        logger.error({
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+          to: options.to,
+          duration: `${duration}ms`,
+        }, 'Failed to send email via Brevo API');
+        return false;
+      }
+
+      const result = await response.json();
+      logger.info({
+        messageId: result.messageId,
+        to: options.to,
+        duration: `${duration}ms`,
+      }, 'Email sent successfully via Brevo API');
       return true;
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      logger.error({ 
-        error: error.message, 
-        code: error.code,
-        command: error.command,
+      logger.error({
+        error: error.message,
         to: options.to,
         duration: `${duration}ms`,
-        host: this.config.host,
-        port: this.config.port,
-      }, 'Failed to send email');
+      }, 'Failed to send email via Brevo API');
       return false;
     }
   }
@@ -145,22 +135,12 @@ export class EmailService {
                       </tr>
                     </table>
                     
-                    <!-- Divider -->
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 25px 0;">
-                      <tr>
-                        <td style="height: 1px; background-color: #e5e7eb;"></td>
-                      </tr>
-                    </table>
-                    
                     <!-- Info Box -->
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 20px 0;">
                       <tr>
                         <td style="background-color: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 16px 20px;">
                           <p style="margin: 6px 0; color: #1e40af; font-size: 14px; font-family: Arial, Helvetica, sans-serif;">
-                            <strong>Langkah selanjutnya:</strong>
-                          </p>
-                          <p style="margin: 6px 0; color: #1e40af; font-size: 14px; font-family: Arial, Helvetica, sans-serif;">
-                            Masukkan kode OTP ini di halaman reset password untuk membuat password baru Anda.
+                            <strong>Kode OTP berlaku selama 10 menit</strong>
                           </p>
                         </td>
                       </tr>
@@ -168,7 +148,7 @@ export class EmailService {
                     
                     <!-- Final message -->
                     <p style="margin: 24px 0 0 0; color: #333333; font-size: 15px; line-height: 1.5; font-family: Arial, Helvetica, sans-serif;">
-                      Jika Anda tidak meminta reset password, abaikan email ini dan pastikan akun Anda tetap aman.
+                      Jika Anda tidak meminta reset password, abaikan email ini.
                     </p>
                     
                   </td>
@@ -181,12 +161,8 @@ export class EmailService {
                       Survey Issue Tracker
                     </p>
                     <p style="margin: 8px 0; font-size: 13px; color: #6b7280; font-family: Arial, Helvetica, sans-serif;">
-                      Email ini dikirim secara otomatis, mohon jangan membalas email ini.
+                      Email ini dikirim secara otomatis, mohon jangan membalas.
                     </p>
-                    <p style="margin: 8px 0; font-size: 13px; color: #6b7280; font-family: Arial, Helvetica, sans-serif;">
-                      Untuk keamanan, kode OTP hanya berlaku selama 10 menit.
-                    </p>
-                    ${userName ? `<p style="margin: 8px 0; font-size: 13px; color: #6b7280; font-family: Arial, Helvetica, sans-serif;">Email ini dikirim untuk akun: <span style="font-weight: 600; color: #004e92;">${userName}</span></p>` : ''}
                   </td>
                 </tr>
                 
@@ -203,14 +179,10 @@ export class EmailService {
       
       ${greeting}
       
-      Kami menerima permintaan untuk reset password akun Anda.
       Kode OTP Anda: ${otp}
       
       Kode ini akan expired dalam 10 menit.
       Jangan bagikan kode ini kepada siapapun!
-      
-      Jika Anda tidak meminta reset password, abaikan email ini.
-      ${userName ? `\nEmail ini dikirim untuk akun: ${userName}` : ''}
     `;
 
     return await this.sendEmail({
@@ -219,16 +191,5 @@ export class EmailService {
       html,
       text,
     });
-  }
-
-  async verifyConnection(): Promise<boolean> {
-    try {
-      await this.transporter.verify();
-      logger.info('SMTP connection verified successfully');
-      return true;
-    } catch (error) {
-      logger.error({ error }, 'SMTP connection failed:');
-      return false;
-    }
   }
 }

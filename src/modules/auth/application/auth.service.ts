@@ -12,6 +12,7 @@ import type {
 } from '../domain/auth.entity.js';
 import type { IAuthRepository } from '../domain/auth.repository.js';
 import { EmailService } from '../../../shared/services/email.service.js';
+import { BrevoEmailService } from '../../../shared/services/brevo-email.service.js';
 import logger from '../../../infrastructure/logging/logger.js';
 
 function isEmail(value: string): boolean {
@@ -19,17 +20,28 @@ function isEmail(value: string): boolean {
 }
 
 export class AuthService {
-  private emailService: EmailService;
+  private emailService: EmailService | BrevoEmailService;
 
   constructor(private authRepo: IAuthRepository) {
 
-    this.emailService = new EmailService({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || '',
-      from: process.env.SMTP_FROM || '',
-    });
+    // Use Brevo API if available (more reliable than SMTP)
+    if (process.env.BREVO_API_KEY) {
+      logger.info('Using Brevo API for email service');
+      this.emailService = new BrevoEmailService({
+        apiKey: process.env.BREVO_API_KEY,
+        senderEmail: process.env.SMTP_FROM || process.env.BREVO_SENDER_EMAIL || '',
+        senderName: process.env.BREVO_SENDER_NAME || 'Survey Issue Tracker',
+      });
+    } else {
+      logger.info('Using SMTP for email service');
+      this.emailService = new EmailService({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        user: process.env.SMTP_USER || '',
+        pass: process.env.SMTP_PASS || '',
+        from: process.env.SMTP_FROM || '',
+      });
+    }
   }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
