@@ -12,7 +12,6 @@ import type {
 } from '../domain/auth.entity.js';
 import type { IAuthRepository } from '../domain/auth.repository.js';
 import { EmailService } from '../../../shared/services/email.service.js';
-import { ResendEmailService } from '../../../shared/services/resend-email.service.js';
 import logger from '../../../infrastructure/logging/logger.js';
 
 function isEmail(value: string): boolean {
@@ -20,28 +19,15 @@ function isEmail(value: string): boolean {
 }
 
 export class AuthService {
-  private emailService: EmailService | ResendEmailService;
+  private emailService: EmailService;
 
   constructor(private authRepo: IAuthRepository) {
-
-    // Use Resend API if available (fastest and most reliable)
-    if (process.env.RESEND_API_KEY) {
-      logger.info('Using Resend API for email service');
-      this.emailService = new ResendEmailService({
-        apiKey: process.env.RESEND_API_KEY,
-        senderEmail: process.env.SMTP_FROM || process.env.RESEND_SENDER_EMAIL || '',
-        senderName: process.env.RESEND_SENDER_NAME || 'Survey Issue Tracker',
-      });
-    } else {
-      logger.info('Using SMTP for email service');
-      this.emailService = new EmailService({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        user: process.env.SMTP_USER || '',
-        pass: process.env.SMTP_PASS || '',
-        from: process.env.SMTP_FROM || '',
-      });
-    }
+    logger.info('Using Brevo API for email service');
+    this.emailService = new EmailService({
+      apiKey: process.env.BREVO_API_KEY || '',
+      fromEmail: process.env.BREVO_FROM || '',
+      fromName: process.env.BREVO_SENDER_NAME || 'Survey Issue Tracker',
+    });
   }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {

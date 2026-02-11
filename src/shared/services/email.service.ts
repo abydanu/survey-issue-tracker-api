@@ -1,12 +1,9 @@
-import nodemailer from 'nodemailer';
 import logger from '../../infrastructure/logging/logger.js';
 
 export interface EmailConfig {
-  host: string;
-  port: number;
-  user: string;
-  pass: string;
-  from: string;
+  apiKey: string;
+  fromEmail: string;
+  fromName?: string;
 }
 
 export interface EmailOptions {
@@ -17,79 +14,86 @@ export interface EmailOptions {
 }
 
 export class EmailService {
-  private transporter: nodemailer.Transporter;
   private config: EmailConfig;
+  private apiUrl = 'https://api.brevo.com/v3/smtp/email';
 
   constructor(config: EmailConfig) {
     this.config = config;
     
     // Log configuration (without sensitive data)
     logger.info({
-      host: config.host,
-      port: config.port,
-      secure: config.port === 465,
-      from: config.from,
-      user: config.user,
+      fromEmail: config.fromEmail,
+      fromName: config.fromName,
+      hasApiKey: !!config.apiKey,
     }, 'Initializing email service');
-    
-    this.transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.port === 465, 
-      auth: {
-        user: config.user,
-        pass: config.pass,
-      },
-      // Add timeout and connection settings for Railway/production
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 10000, // 10 seconds
-      socketTimeout: 15000, // 15 seconds
-      pool: true, // Use connection pooling
-      maxConnections: 5,
-      maxMessages: 100,
-      // Retry settings
-      tls: {
-        rejectUnauthorized: process.env.NODE_ENV === 'production',
-      },
-      // Add debug logging
-      logger: process.env.NODE_ENV !== 'production',
-      debug: process.env.NODE_ENV !== 'production',
-    });
   }
 
   async sendEmail(options: EmailOptions): Promise<boolean> {
     const startTime = Date.now();
     try {
-      logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email');
-      
-      const mailOptions = {
-        from: this.config.from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      };
+      if (!this.config.apiKey) {
+        logger.error({ to: options.to }, 'BREVO_API_KEY is not set, cannot send email');
+        return false;
+      }
 
-      // Add timeout wrapper (20 seconds total)
-      const sendPromise = this.transporter.sendMail(mailOptions);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Email send timeout after 20 seconds')), 20000);
-      });
+      if (!this.config.fromEmail) {
+        logger.error({ to: options.to }, 'BREVO_FROM is not set, cannot send email');
+        return false;
+      }
 
-      const result = await Promise.race([sendPromise, timeoutPromise]) as any;
+      logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email via Brevo API');
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000); // 20 seconds total
+
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          'api-key': this.config.apiKey,
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          sender: this.config.fromName
+            ? { email: this.config.fromEmail, name: this.config.fromName }
+            : { email: this.config.fromEmail },
+          to: [{ email: options.to }],
+          subject: options.subject,
+          htmlContent: options.html,
+          ...(options.text ? { textContent: options.text } : {}),
+        }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+
       const duration = Date.now() - startTime;
-      logger.info({ messageId: result.messageId, to: options.to, duration: `${duration}ms` }, 'Email sent successfully');
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        logger.error(
+          {
+            status: response.status,
+            statusText: response.statusText,
+            to: options.to,
+            duration: `${duration}ms`,
+            error: errorText,
+          },
+          'Failed to send email via Brevo API'
+        );
+        return false;
+      }
+
+      const resultText = await response.text().catch(() => '');
+      logger.info(
+        { to: options.to, duration: `${duration}ms`, result: resultText },
+        'Email accepted by Brevo'
+      );
       return true;
     } catch (error: any) {
       const duration = Date.now() - startTime;
       logger.error({ 
         error: error.message, 
-        code: error.code,
-        command: error.command,
         to: options.to,
         duration: `${duration}ms`,
-        host: this.config.host,
-        port: this.config.port,
       }, 'Failed to send email');
       return false;
     }
@@ -223,11 +227,29 @@ export class EmailService {
 
   async verifyConnection(): Promise<boolean> {
     try {
-      await this.transporter.verify();
-      logger.info('SMTP connection verified successfully');
+      if (!this.config.apiKey) return false;
+
+      const response = await fetch('https://api.brevo.com/v3/account', {
+        method: 'GET',
+        headers: {
+          'api-key': this.config.apiKey,
+          accept: 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        logger.error(
+          { status: response.status, statusText: response.statusText, body },
+          'Brevo connection verification failed'
+        );
+        return false;
+      }
+
+      logger.info('Brevo API key verified successfully');
       return true;
-    } catch (error) {
-      logger.error({ error }, 'SMTP connection failed:');
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Brevo connection verification failed');
       return false;
     }
   }
