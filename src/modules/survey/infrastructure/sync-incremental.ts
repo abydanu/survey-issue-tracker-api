@@ -1,4 +1,5 @@
 
+import logger from '@/infrastructure/logging/logger.js';
 import { Prisma } from '../../../generated/prisma/client.js';
 import type { EnumType } from '../application/enum-value.service.js';
 
@@ -24,7 +25,7 @@ export async function incrementalSyncFromSheets(
   };
 
   try {
-    console.log(`Starting incremental sync: ${detailData.length} detail + ${summaryData.length} summary records from sheets`);
+    logger.info(`Starting incremental sync: ${detailData.length} detail + ${summaryData.length} summary records from sheets`);
 
     const enumCache = new Map<string, string | null>();
     
@@ -37,10 +38,6 @@ export async function incrementalSyncFromSheets(
       }
       
       try {
-        // Debug logging for first 3 enum resolutions
-        if (enumCache.size < 3) {
-          console.log(`[ENUM DEBUG] Resolving ${enumType}.${value} with displayName: "${displayName}"`);
-        }
         const id = await enumValueService.findOrCreateEnumValue(enumType, value, displayName || undefined);
         enumCache.set(cacheKey, id);
         return id;
@@ -50,7 +47,7 @@ export async function incrementalSyncFromSheets(
       }
     };
 
-    console.log('Pre-resolving enums...');
+    logger.info('Pre-resolving enums...');
     const enumPromises: Promise<any>[] = [];
     
     for (const detail of detailData) {
@@ -67,9 +64,9 @@ export async function incrementalSyncFromSheets(
     }
     
     await Promise.all(enumPromises);
-    console.log(`Pre-resolved ${enumCache.size} unique enum values`);
+    logger.info(`Pre-resolved ${enumCache.size} unique enum values`);
 
-    console.log('Fetching existing records...');
+    logger.info('Fetching existing records...');
     const [existingDetails, existingSummaries] = await Promise.all([
       prisma.newBgesB2BOlo.findMany({
         select: { 
@@ -89,7 +86,7 @@ export async function incrementalSyncFromSheets(
     const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
 
     
-    console.log(`Processing ${detailData.length} detail records...`);
+    logger.info(`Processing ${detailData.length} detail records...`);
       const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
@@ -255,7 +252,7 @@ export async function incrementalSyncFromSheets(
     }
 
     if (summaryData.length > 0) {
-      console.log(`Processing ${summaryData.length} summary records...`);
+      logger.info(`Processing ${summaryData.length} summary records...`);
       const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
@@ -351,22 +348,6 @@ export async function incrementalSyncFromSheets(
                   const statusJtId = summary.statusJt ? enumCache.get(`StatusJt:${summary.statusJt}`) : null;
                   const statusInstalasiId = summary.statusInstalasi ? enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`) : null;
 
-                  // Debug logging for missing statusJt
-                  if (summary.statusJt && !statusJtId) {
-                    console.log(`[WARN] StatusJt not found in cache: "${summary.statusJt}" for ${nomorNcx}`);
-                  }
-
-                  // Debug logging for summary data BEFORE upsert
-                  if (nomorNcx === '1002237835' || nomorNcx === '1002235636') {
-                    console.log(`[DEBUG] BEFORE upsert for ${nomorNcx}:`, {
-                      statusJt: summary.statusJt,
-                      statusJtId,
-                      alamatInstalasi: summary.alamatInstalasi,
-                      jenisLayanan: summary.jenisLayanan,
-                      nilaiKontrak: summary.nilaiKontrak,
-                    });
-                  }
-
                   const upsertResult = await tx.ndeUsulanB2B.upsert({
                     where: { nomorNcx: nomorNcx },
                     update: {
@@ -423,26 +404,15 @@ export async function incrementalSyncFromSheets(
                     },
                   });
                   
-                  // Debug logging AFTER upsert
-                  if (nomorNcx === '1002237835' || nomorNcx === '1002235636') {
-                    console.log(`[DEBUG] AFTER upsert for ${nomorNcx}:`, {
-                      id: upsertResult.id,
-                      statusJtId: upsertResult.statusJtId,
-                      alamatInstalasi: upsertResult.alamatInstalasi,
-                      jenisLayanan: upsertResult.jenisLayanan,
-                      nilaiKontrak: upsertResult.nilaiKontrak?.toString(),
-                    });
-                  }
-                  
                   if (existingSummaryIds.has(nomorNcx)) {
                     stats.updated++;
                   } else {
                     stats.created++;
                   }
                 } catch (error: any) {
-                  console.error(`Error upserting summary ${nomorNcx} (no: ${no}):`, error.message);
+                  logger.error(`Error upserting summary ${nomorNcx} (no: ${no}):`, error.message);
                   if (error.code === 'P2002') {
-                    console.error(`Duplicate 'no' detected: ${no}. This summary will be skipped.`);
+                    logger.error(`Duplicate 'no' detected: ${no}. This summary will be skipped.`);
                   }
                   stats.errors++;
                 }
@@ -464,7 +434,7 @@ export async function incrementalSyncFromSheets(
     const summariesToDelete = existingSummaries.filter((s: any) => !sheetSummaryResolvedIds.has(s.nomorNcx));
     
     if (summariesToDelete.length > 0 || detailsToDelete.length > 0) {
-      console.log(`Deleting ${summariesToDelete.length} summaries and ${detailsToDelete.length} details...`);
+      logger.info(`Deleting ${summariesToDelete.length} summaries and ${detailsToDelete.length} details...`);
       
       try {
         // Batch delete summaries first (due to foreign key constraint)
@@ -493,8 +463,8 @@ export async function incrementalSyncFromSheets(
     const totalTime = Date.now() - startTime;
     const timeInSeconds = (totalTime / 1000).toFixed(2);
     
-    console.log(`✅ Incremental sync completed in ${timeInSeconds}s`);
-    console.log(`📊 Results: ${stats.created} created, ${stats.updated} updated, ${stats.deleted} deleted, ${stats.skipped} skipped, ${stats.errors} errors`);
+    logger.info(`✅ Incremental sync completed in ${timeInSeconds}s`);
+    logger.info(`📊 Results: ${stats.created} created, ${stats.updated} updated, ${stats.deleted} deleted, ${stats.skipped} skipped, ${stats.errors} errors`);
 
     return stats;
   } catch (error) {

@@ -284,20 +284,6 @@ export class SyncPrismaRepository implements ISyncRepository {
   private mapToSurvey(item: any): Survey {
     const master = item.masterData || {};
     
-    // Debug logging for specific records
-    if (item.nomorNcx === '1002237835' || item.nomorNcx === '1002235636') {
-      console.log(`[DEBUG] mapToSurvey for ${item.nomorNcx}:`, {
-        'item.statusJt': item.statusJt,
-        'item.statusJt?.value': item.statusJt?.value,
-        'item.alamatInstalasi': item.alamatInstalasi,
-        'item.jenisLayanan': item.jenisLayanan,
-        'item.nilaiKontrak': item.nilaiKontrak,
-        'item.progressJt': item.progressJt,
-        'item.namaOdp': item.namaOdp,
-        'item.jarakOdp': item.jarakOdp,
-      });
-    }
-    
     return {
       id: item.id,
       no: item.no,

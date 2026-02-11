@@ -199,11 +199,8 @@ export class EnumValueService {
 
         logger.info(`Auto-created new enum: ${enumType}.${normalizedValue} with displayName: ${cleanDisplayName}`);
       } catch (error: any) {
-        // Handle race condition: another request created it first
         if (error.code === 'P2002') {
-          logger.warn(`Enum ${enumType}.${normalizedValue} already exists (race condition), fetching...`);
           
-          // Fetch the existing enum that was created by another request
           enumValue = await prisma.enumValue.findUnique({
             where: {
               enumType_value: {
@@ -225,12 +222,14 @@ export class EnumValueService {
       const cleanDisplayName = displayName.replace(/_/g, ' ');
       if (enumValue.displayName !== cleanDisplayName) {
         try {
-          console.log(`[ENUM UPDATE] ${enumType}.${normalizedValue}: "${enumValue.displayName}" -> "${cleanDisplayName}"`);
           enumValue = await prisma.enumValue.update({
             where: { id: enumValue.id },
             data: { displayName: cleanDisplayName },
           });
-          logger.info(`Updated displayName for ${enumType}.${normalizedValue}: ${cleanDisplayName}`);
+          // Only log if in development
+          if (process.env.NODE_ENV !== 'production') {
+            logger.info(`Updated displayName for ${enumType}.${normalizedValue}: ${cleanDisplayName}`);
+          }
         } catch (error: any) {
           logger.warn(`Failed to update displayName for ${enumType}.${normalizedValue}:`, error);
         }

@@ -114,10 +114,6 @@ export class GoogleSheetsService {
     const sheets = spreadsheet.data.sheets || [];
     const titles = sheets.map((s: any) => s.properties?.title).filter(Boolean);
 
-    logger.info(`[DEBUG] Available sheets in spreadsheet: ${titles.join(", ")}`);
-    logger.info(`[DEBUG] Looking for summary sheet: "${this.summarySheetName}"`);
-    logger.info(`[DEBUG] Looking for detail sheet: "${this.detailSheetName}"`);
-
     
     const summarySheet = sheets.find(
       (s: any) => s.properties?.title === this.summarySheetName
@@ -157,9 +153,6 @@ export class GoogleSheetsService {
     this.detailSheetName = resolvedDetail.properties.title;
     this.summarySheetId = Number(resolvedSummary.properties.sheetId);
     this.detailSheetId = Number(resolvedDetail.properties.sheetId);
-
-    logger.info(`[DEBUG] Resolved summary sheet: "${this.summarySheetName}" (ID: ${this.summarySheetId})`);
-    logger.info(`[DEBUG] Resolved detail sheet: "${this.detailSheetName}" (ID: ${this.detailSheetId})`);
   }
 
   async readSummaryData(): Promise<SurveySummarySheetRow[]> {
@@ -347,9 +340,6 @@ export class GoogleSheetsService {
       const headerIdx = findHeaderRowIndex(rows as any[][]);
       const dataRows = headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
 
-      console.log(`[DEBUG] Total rows in detail sheet (excluding header): ${dataRows.length}`);
-      console.log(`[DEBUG] Checking rows with idKendala (column E)...`);
-
       const results = [];
       let skippedCount = 0;
       const skipReasons: { [key: string]: number } = {
@@ -370,25 +360,7 @@ export class GoogleSheetsService {
         const idKendala = row[4] ? String(row[4]).trim() : '';
         const namaPelanggan = row[8] ? String(row[8]).trim() : 'N/A';
 
-
-        if (rowNumber <= 5) {
-          console.log(`[DEBUG] Row ${rowNumber} columns:`, {
-            'A(0)': row[0] || 'empty',
-            'B(1)': row[1] || 'empty',
-            'C(2)': row[2] || 'empty',
-            'D(3)': row[3] || 'empty',
-            'E(4)': row[4] || 'empty',
-            'F(5)': row[5] || 'empty',
-            'G(6)': row[6] || 'empty',
-            'H(7)': row[7] || 'empty',
-            'I(8)': row[8] || 'empty',
-          });
-        }
-
         if (!idKendala || idKendala === '') {
-          if (rowNumber <= 10 || (rowNumber > 600 && rowNumber <= 610)) {
-            console.log(`[SKIP] Row ${rowNumber}: No idKendala (nama: ${namaPelanggan}, raw row[4]: "${row[4]}")`);
-          }
           skipReasons['no_idKendala'] = (skipReasons['no_idKendala'] || 0) + 1;
           skippedCount++;
           continue;
@@ -606,11 +578,6 @@ export class GoogleSheetsService {
 
       const rows = response.data.values || [];
       
-      // Debug: log first few rows to understand structure
-      if (rows.length > 0) {
-        console.log('[SHEET DEBUG] First 5 rows from column A:', rows.slice(0, 5));
-      }
-      
       // Skip only 1 row (header), not 2
       const dataRows = rows.length < 2 ? [] : rows.slice(1);
 
@@ -628,10 +595,6 @@ export class GoogleSheetsService {
           normalizedCellValue === normalizedSearchNo
         );
       });
-
-      if (idx >= 0) {
-        console.log(`[SHEET DEBUG] Found row at dataRows index ${idx}, actual row number: ${idx + 2}`);
-      }
 
       return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
     } catch (error: any) {
@@ -699,8 +662,6 @@ export class GoogleSheetsService {
   private async findDetailRowIndex(idKendala: string): Promise<number | null> {
     try {
       await this.ensureSheetConfigLoaded();
-      logger.info(`[DEBUG] Searching for idKendala ${idKendala} in sheet: "${this.detailSheetName}"`);
-      logger.info(`[DEBUG] Using range: ${this.detailSheetName}!E:E`);
 
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
@@ -708,19 +669,12 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      logger.info(`[DEBUG] Found ${rows.length} total rows in column E`);
 
       const dataRows = rows.length < 3 ? [] : rows.slice(2);
       const k = String(idKendala).trim();
       const idx = dataRows.findIndex(
         (row: any[]) => String(row[0] ?? "").trim() === k
       );
-
-      if (idx >= 0) {
-        logger.info(`[DEBUG] Found idKendala at index ${idx}, row number: ${idx + 3}`);
-      } else {
-        logger.info(`[DEBUG] idKendala ${idKendala} not found in sheet "${this.detailSheetName}"`);
-      }
 
       return idx >= 0 ? idx + 3 : null;
     } catch (error: any) {
@@ -1171,16 +1125,6 @@ export class GoogleSheetsService {
       statusJtRaw: (() => {
         const rawValue = row[1];
         const trimmedValue = rawValue ? String(rawValue).trim() : undefined;
-        // Debug logging for first 5 rows
-        if (rowNumber <= 5) {
-          console.log(`[SHEET DEBUG] Row ${rowNumber} StatusJt:`, {
-            rawValue: rawValue,
-            type: typeof rawValue,
-            trimmed: trimmedValue,
-            hasSpace: trimmedValue?.includes(' '),
-            hasUnderscore: trimmedValue?.includes('_')
-          });
-        }
         return trimmedValue;
       })(),
       c2r,
@@ -1224,11 +1168,6 @@ export class GoogleSheetsService {
     if (row[3]) {
       const dateStr = String(row[3]).trim();
 
-
-      if (rowNumber <= 5) {
-        console.log(`[DEBUG] Row ${rowNumber} - Tanggal Input (col D/row[3]): "${dateStr}"`);
-      }
-
       if (dateStr && dateStr !== '-' && dateStr !== '') {
         try {
           if (dateStr.includes("/")) {
@@ -1243,15 +1182,8 @@ export class GoogleSheetsService {
                 year += year < 50 ? 2000 : 1900;
               }
 
-
-
               const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
               tglInputUsulan = new Date(isoDateStr);
-
-
-              if (rowNumber <= 5) {
-                console.log(`[DEBUG] Row ${rowNumber} - Parsed: ${dateStr} -> ${isoDateStr} -> ${tglInputUsulan}`);
-              }
 
 
               if (isNaN(tglInputUsulan.getTime()) || year < 2000 || year > 2100) {
@@ -1270,11 +1202,6 @@ export class GoogleSheetsService {
         } catch (error) {
           console.warn(`Failed to parse date "${dateStr}" at row ${rowNumber}:`, error);
           tglInputUsulan = null;
-        }
-      } else {
-
-        if (rowNumber <= 5) {
-          console.log(`[DEBUG] Row ${rowNumber} - Tanggal kosong atau '-'`);
         }
       }
     }
