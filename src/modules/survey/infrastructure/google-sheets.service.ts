@@ -176,18 +176,63 @@ export class GoogleSheetsService {
         return [];
       }
 
-      const dataRows = rows.slice(2);
+      const findHeaderRowIndex = (allRows: any[][]): number => {
+        // Summary header biasanya berisi: "NO" di kolom A dan "Nomer NCX/Starclick" di kolom D
+        for (let i = 0; i < allRows.length; i++) {
+          const row = allRows[i];
+          if (!Array.isArray(row)) continue;
+          const a = String(row[0] ?? "").trim().toUpperCase();
+          const d = String(row[3] ?? "").trim().toUpperCase();
+          if (a === "NO" && (d.includes("NCX") || d.includes("STARCLICK"))) {
+            return i;
+          }
+        }
+        return -1;
+      };
+
+      const headerIdx = findHeaderRowIndex(rows as any[][]);
+      const dataRows = headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
 
       const results = [];
+      let skippedEmptyRow = 0;
+      let skippedNoNomorNcx = 0;
+      let skippedShortRow = 0;
+
       for (const [index, row] of dataRows.entries()) {
+        if (!Array.isArray(row) || row.length === 0) {
+          skippedEmptyRow++;
+          continue;
+        }
         if (
           Array.isArray(row) &&
-          row.length >= 4 &&
-          String(row[3] ?? "").trim() !== ""
+          row.length >= 4
         ) {
-          results.push(await this.mapRowToSummary(row, index + 3));
+          const nomorNcxCell = String(row[3] ?? "").trim();
+          if (nomorNcxCell !== "") {
+            // rowNumber untuk logging/debug: gunakan offset +1 dari dataRows start
+            const rowNumber =
+              headerIdx >= 0 ? headerIdx + 1 + (index + 1) : 2 + (index + 1);
+            results.push(await this.mapRowToSummary(row, rowNumber));
+          } else {
+            skippedNoNomorNcx++;
+          }
+        } else {
+          skippedShortRow++;
         }
       }
+
+      logger.info(
+        {
+          totalRows: rows.length,
+          headerIdx,
+          dataRows: dataRows.length,
+          returned: results.length,
+          skippedEmptyRow,
+          skippedShortRow,
+          skippedNoNomorNcx,
+        },
+        "Read summary data completed"
+      );
       return results;
     } catch (error: any) {
       logger.error({
@@ -209,7 +254,24 @@ export class GoogleSheetsService {
 
     const rows = response.data.values;
     if (!rows || rows.length < 3) return [];
-    return rows.slice(2);
+    const findHeaderRowIndex = (allRows: any[][]): number => {
+      // Detail header biasanya mengandung "ID KENDALA" dan "NEW SC"
+      for (let i = 0; i < allRows.length; i++) {
+        const row = allRows[i];
+        if (!Array.isArray(row)) continue;
+        const joined = row.map((c) => String(c ?? "").trim().toUpperCase()).join(" | ");
+        const score =
+          (joined.includes("ID KENDALA") || joined.includes("KENDALA") ? 1 : 0) +
+          (joined.includes("DATEL") ? 1 : 0) +
+          (joined.includes("STO") ? 1 : 0) +
+          (joined.includes("NAMA PELANGGAN") ? 1 : 0) +
+          (joined.includes("NEW SC") ? 1 : 0);
+        if (score >= 3) return i;
+      }
+      return -1;
+    };
+    const headerIdx = findHeaderRowIndex(rows as any[][]);
+    return headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
   }
 
   async readRawSummaryRows(): Promise<any[][]> {
@@ -222,7 +284,18 @@ export class GoogleSheetsService {
 
     const rows = response.data.values;
     if (!rows || rows.length < 3) return [];
-    return rows.slice(2);
+    const findHeaderRowIndex = (allRows: any[][]): number => {
+      for (let i = 0; i < allRows.length; i++) {
+        const row = allRows[i];
+        if (!Array.isArray(row)) continue;
+        const a = String(row[0] ?? "").trim().toUpperCase();
+        const d = String(row[3] ?? "").trim().toUpperCase();
+        if (a === "NO" && (d.includes("NCX") || d.includes("STARCLICK"))) return i;
+      }
+      return -1;
+    };
+    const headerIdx = findHeaderRowIndex(rows as any[][]);
+    return headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
   }
 
   async readRanges(ranges: string[]): Promise<Record<string, any[]>> {
@@ -256,7 +329,23 @@ export class GoogleSheetsService {
         return [];
       }
 
-      const dataRows = rows.slice(2);
+      const findHeaderRowIndex = (allRows: any[][]): number => {
+        for (let i = 0; i < allRows.length; i++) {
+          const row = allRows[i];
+          if (!Array.isArray(row)) continue;
+          const joined = row.map((c) => String(c ?? "").trim().toUpperCase()).join(" | ");
+          const score =
+            (joined.includes("ID KENDALA") || joined.includes("KENDALA") ? 1 : 0) +
+            (joined.includes("DATEL") ? 1 : 0) +
+            (joined.includes("STO") ? 1 : 0) +
+            (joined.includes("NAMA PELANGGAN") ? 1 : 0) +
+            (joined.includes("NEW SC") ? 1 : 0);
+          if (score >= 3) return i;
+        }
+        return -1;
+      };
+      const headerIdx = findHeaderRowIndex(rows as any[][]);
+      const dataRows = headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
 
       console.log(`[DEBUG] Total rows in detail sheet (excluding header): ${dataRows.length}`);
       console.log(`[DEBUG] Checking rows with idKendala (column E)...`);
@@ -516,7 +605,14 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 3 ? [] : rows.slice(2);
+      
+      // Debug: log first few rows to understand structure
+      if (rows.length > 0) {
+        console.log('[SHEET DEBUG] First 5 rows from column A:', rows.slice(0, 5));
+      }
+      
+      // Skip only 1 row (header), not 2
+      const dataRows = rows.length < 2 ? [] : rows.slice(1);
 
       const normalizedSearchNo =
         String(no).replace(/^'/, "").replace(/^0+/, "") || "0";
@@ -533,7 +629,11 @@ export class GoogleSheetsService {
         );
       });
 
-      return idx >= 0 ? idx + 3 : null;
+      if (idx >= 0) {
+        console.log(`[SHEET DEBUG] Found row at dataRows index ${idx}, actual row number: ${idx + 2}`);
+      }
+
+      return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -552,14 +652,14 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 3 ? [] : rows.slice(2);
+      const dataRows = rows.length < 2 ? [] : rows.slice(1); // Skip only header
 
       const idx = dataRows.findIndex((row: any[]) => {
         const cellValue = String(row[0] ?? "").trim();
         return cellValue === String(nomorNcx).trim();
       });
 
-      return idx >= 0 ? idx + 3 : null;
+      return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -578,7 +678,7 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 3 ? [] : rows.slice(2);
+      const dataRows = rows.length < 2 ? [] : rows.slice(1); // Skip only header
 
       const searchName = String(namaPelanggan).trim().toLowerCase();
       const idx = dataRows.findIndex((row: any[]) => {
@@ -586,7 +686,7 @@ export class GoogleSheetsService {
         return cellValue === searchName;
       });
 
-      return idx >= 0 ? idx + 3 : null;
+      return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -668,7 +768,7 @@ export class GoogleSheetsService {
           range: `${this.summarySheetName}!A:D`,
         });
         const rows = response.data.values || [];
-        const dataRows = rows.length < 3 ? [] : rows.slice(2);
+        const dataRows = rows.length < 2 ? [] : rows.slice(1); // Skip only header
         const availableNos = dataRows
           .map((row: any[]) => String(row[0] ?? "").trim())
           .filter(Boolean);
@@ -1109,6 +1209,17 @@ export class GoogleSheetsService {
   }
 
   private async mapRowToDetail(row: any[], rowNumber: number): Promise<NewBgesB2BOloRow> {
+    const normalizeSheetId = (value: any): string => {
+      const raw = String(value || "")
+        .trim()
+        .replace(/^'/, ""); // handle Sheets "forced text" numbers
+
+      // Handle cases where Sheets API returns numeric-looking IDs with ".0"
+      // e.g. 1002249961.0 -> 1002249961
+      if (/^\d+\.0$/.test(raw)) return raw.slice(0, -2);
+      return raw;
+    };
+
     let tglInputUsulan: Date | null = null;
     if (row[3]) {
       const dateStr = String(row[3]).trim();
@@ -1205,7 +1316,7 @@ export class GoogleSheetsService {
     let occPercentage: number | null = null;
 
     return {
-      idKendala: String(row[4] || "").trim(),
+      idKendala: normalizeSheetId(row[4]),
       umur,
       bln: row[2] ? String(row[2]).trim() : null,
       tglInputUsulan,
@@ -1233,7 +1344,7 @@ export class GoogleSheetsService {
       statusUsulanRaw: row[15] ? String(row[15]).trim() : undefined,
       statusInstalasiRaw: row[18] ? String(row[18]).trim() : undefined,
       keteranganRaw: row[19] ? String(row[19]).trim() : undefined,
-      newSc: row[20] ? String(row[20]).trim() : null,
+      newSc: row[20] ? normalizeSheetId(row[20]) : null,
 
       namaOdp: null,
       tglGolive: null,

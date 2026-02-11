@@ -200,6 +200,60 @@ export async function incrementalSyncFromSheets(
     // Set of resolved idKendala untuk setiap baris NDE di sheet (supaya delete tidak salah hapus baris yang pakai NEW SC)
     const sheetSummaryResolvedIds = new Set<string>();
 
+    /**
+     * IMPORTANT:
+     * Summary sheet memiliki kolom `no` yang unik di DB.
+     * Kalau ada record lama yang sudah hilang dari sheet tapi belum di-delete,
+     * record baru dengan `no` yang sama akan gagal create (P2002) sebelum fase delete dijalankan.
+     *
+     * Jadi kita lakukan pre-delete untuk summary yang jelas-jelas tidak ada di sheet (berdasarkan nomorNCX/newSC),
+     * sebelum proses upsert summary dimulai.
+     */
+    if (summaryData.length > 0 && existingSummaries.length > 0) {
+      const rawSheetNomorValues = Array.from(
+        new Set(
+          summaryData
+            .map((s: any) => (s.nomorNcx || s.nomorNc)?.trim())
+            .filter(Boolean)
+        )
+      ) as string[];
+
+      if (rawSheetNomorValues.length > 0) {
+        const masters = await prisma.newBgesB2BOlo.findMany({
+          where: {
+            OR: [
+              { idKendala: { in: rawSheetNomorValues } },
+              { newSc: { in: rawSheetNomorValues } },
+            ],
+          },
+          select: { idKendala: true, newSc: true },
+        });
+
+        const newScToIdKendala = new Map<string, string>();
+        for (const m of masters) {
+          if (m.newSc) newScToIdKendala.set(String(m.newSc).trim(), m.idKendala);
+          newScToIdKendala.set(String(m.idKendala).trim(), m.idKendala);
+        }
+
+        const preResolvedSheetIds = new Set<string>();
+        for (const raw of rawSheetNomorValues) {
+          const resolved = newScToIdKendala.get(raw) ?? raw;
+          if (resolved && String(resolved).trim()) preResolvedSheetIds.add(String(resolved).trim());
+        }
+
+        const preSummariesToDelete = existingSummaries.filter(
+          (s: any) => !preResolvedSheetIds.has(String(s.nomorNcx).trim())
+        );
+
+        if (preSummariesToDelete.length > 0) {
+          console.log(`Pre-deleting ${preSummariesToDelete.length} summaries before upsert to avoid duplicate 'no'...`);
+          await prisma.ndeUsulanB2B.deleteMany({
+            where: { id: { in: preSummariesToDelete.map((s: any) => s.id) } },
+          });
+        }
+      }
+    }
+
     if (summaryData.length > 0) {
       console.log(`Processing ${summaryData.length} summary records...`);
       const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
