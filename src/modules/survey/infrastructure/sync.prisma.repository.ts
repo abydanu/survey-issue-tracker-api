@@ -12,7 +12,6 @@ import type {
   NewBgesB2BOloRow,
 } from '../domain/sync.entity.js';
 import { EnumValueService, type EnumType } from '../application/enum-value.service.js';
-import { autoSyncFromSheetsOptimized } from './sync-optimized.js';
 
 export class SyncPrismaRepository implements ISyncRepository {
   prisma = prismaClient;
@@ -350,7 +349,7 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async findSurveyByNomorNc(nomorNcx: string): Promise<Survey | null> {
-    // Step 1: Try to find by nomorNcx directly
+    
     let survey = await this.prisma.ndeUsulanB2B.findFirst({
       where: { nomorNcx: nomorNcx },
       include: {
@@ -368,7 +367,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       },
     });
 
-    // Step 2: If not found, try to find by master data's newSc
+    
     if (!survey) {
       survey = await this.prisma.ndeUsulanB2B.findFirst({
         where: {
@@ -459,14 +458,14 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async updateSurvey(nomorNcx: string, data: UpdateSurveyDto): Promise<Survey> {
-    // Use findSurveyByNomorNc which already handles newSc lookup
+    
     const existing = await this.findSurveyByNomorNc(nomorNcx);
 
     if (!existing) {
       throw new Error(`Data dengan nomor NCX/Starclick ${nomorNcx} tidak ditemukan`);
     }
 
-    // Get the full record with relations for update
+    
     const existingRecord = await this.prisma.ndeUsulanB2B.findUnique({
       where: { id: existing.id },
       include: {
@@ -515,7 +514,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       }
     }
 
-    // c2r is a formula field in sheets, don't update it
+    
     if (data.nomorNcx !== undefined) {
       if (data.nomorNcx === null || data.nomorNcx === '') {
         throw new Error('Field "nomorNcx" tidak boleh kosong (relasi master data wajib)');
@@ -604,7 +603,7 @@ export class SyncPrismaRepository implements ISyncRepository {
   }
 
   async deleteSurvey(nomorNcx: string): Promise<void> {
-    // Use findSurveyByNomorNc which already handles newSc lookup
+    
     const existing = await this.findSurveyByNomorNc(nomorNcx);
 
     if (!existing) {
@@ -1316,24 +1315,4 @@ export class SyncPrismaRepository implements ISyncRepository {
       throw error;
     }
   }
-
-  async autoSyncFromSheets(
-    summaryData: any[],
-    detailData: any[]
-  ): Promise<{
-    created: number;
-    updated: number;
-    skipped: number;
-    errors: number;
-    batchesProcessed: number;
-  }> {
-    // Use the optimized version that pre-processes enums outside transactions
-    return autoSyncFromSheetsOptimized(
-      this.prisma,
-      this.enumValueService,
-      summaryData,
-      detailData
-    );
-  }
-
 }

@@ -32,15 +32,4 @@ export interface ISyncRepository {
     skipped: number;
     errors: number;
   }>;
-
-  autoSyncFromSheets(
-    summaryData: SurveySummarySheetRow[], 
-    detailData: SurveyDetailSheetRow[]
-  ): Promise<{
-    created: number;
-    updated: number;
-    skipped: number;
-    errors: number;
-    batchesProcessed: number;
-  }>;
 }

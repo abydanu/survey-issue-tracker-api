@@ -12,7 +12,6 @@ export class EnumService {
     try {
       const enums = await this.enumValueService.getAllEnums();
       
-      // Convert to the old format for backward compatibility
       return {
         jenisKendala: enums.JenisKendala.map(e => e.value),
         planTematik: enums.PlanTematik.map(e => e.value),

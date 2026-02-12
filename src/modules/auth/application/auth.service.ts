@@ -22,7 +22,6 @@ export class AuthService {
   private emailService: EmailService;
 
   constructor(private authRepo: IAuthRepository) {
-    logger.info('Using Brevo API for email service');
     this.emailService = new EmailService({
       apiKey: process.env.BREVO_API_KEY || '',
       fromEmail: process.env.BREVO_FROM || '',
@@ -124,9 +123,7 @@ export class AuthService {
     await this.authRepo.createPasswordResetOtp(user.id, otp, expiresAt);
 
     const userName = user.name || user.username;
-    
-    // Send email asynchronously (fire and forget)
-    // This prevents blocking the response while waiting for SMTP
+
     this.emailService.sendPasswordResetOtp(email, otp, userName)
       .then((emailSent) => {
         if (emailSent) {
@@ -139,7 +136,6 @@ export class AuthService {
         logger.error({ error, email }, 'Error sending password reset OTP');
       });
 
-    // Return immediately without waiting for email
     logger.info(`Password reset OTP generated for: ${email}, sending email in background`);
   }
 
@@ -178,8 +174,8 @@ export class AuthService {
 
 
     const userName = user.name || user.username;
-    
-    // Send email asynchronously (fire and forget)
+
+
     this.emailService.sendPasswordResetOtp(email, otp, userName)
       .then((emailSent) => {
         if (emailSent) {
@@ -192,7 +188,7 @@ export class AuthService {
         logger.error({ error, email }, 'Error resending password reset OTP');
       });
 
-    // Return immediately without waiting for email
+
     logger.info(`Password reset OTP regenerated for: ${email}, sending email in background`);
   }
 
@@ -246,7 +242,7 @@ export class AuthService {
     const otpRecord = await this.authRepo.findPasswordResetOtp(otp);
 
     if (!user || !otpRecord) {
-      logger.error( { email, hasUser: !!user, hasOtpRecord: !!otpRecord }, 'User or OTP record not found:');
+      logger.error({ email, hasUser: !!user, hasOtpRecord: !!otpRecord }, 'User or OTP record not found:');
       throw new Error('Invalid request');
     }
 

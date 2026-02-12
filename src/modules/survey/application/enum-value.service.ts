@@ -2,9 +2,9 @@ import prisma from "../../../infrastructure/database/prisma.js";
 import logger from "../../../infrastructure/logging/logger.js";
 import { GoogleSheetsService } from "../infrastructure/google-sheets.service.js";
 
-export type EnumType = 
+export type EnumType =
   | "StatusJt"
-  | "StatusInstalasi" 
+  | "StatusInstalasi"
   | "JenisKendala"
   | "PlanTematik"
   | "StatusUsulan"
@@ -29,7 +29,7 @@ export class EnumValueService {
     },
     {
       enumType: "StatusInstalasi",
-      sheet: "summary", 
+      sheet: "summary",
       columnIndex: 18,
       normalize: (v) => this.normalizeStatusInstalasi(v),
     },
@@ -79,15 +79,18 @@ export class EnumValueService {
     success: boolean;
     message: string;
     newEnums: Array<{ enumType: EnumType; value: string; displayName: string }>;
+    deactivatedEnums: Array<{ enumType: EnumType; value: string; displayName: string }>;
   }> {
     try {
       logger.info("Starting enum sync from Google Sheets...");
 
-      const sheetValuesMap = await this.collectSheetEnumValues();
+      const sheetValuesMap = await this.collectSheetEnumValuesWithDisplayNames();
       const newEnums: Array<{ enumType: EnumType; value: string; displayName: string }> = [];
+      const deactivatedEnums: Array<{ enumType: EnumType; value: string; displayName: string }> = [];
 
-      for (const [enumType, values] of sheetValuesMap.entries()) {
-        for (const value of values) {
+
+      for (const [enumType, valuesMap] of sheetValuesMap.entries()) {
+        for (const [value, displayName] of valuesMap.entries()) {
           const existing = await prisma.enumValue.findUnique({
             where: {
               enumType_value: {
@@ -102,7 +105,7 @@ export class EnumValueService {
               data: {
                 enumType,
                 value,
-                displayName: this.generateDisplayName(value),
+                displayName: displayName,
                 isActive: true,
               },
             });
@@ -114,13 +117,57 @@ export class EnumValueService {
             });
 
             logger.info(`Created new enum: ${enumType}.${value}`);
+          } else if (!existing.isActive) {
+
+            await prisma.enumValue.update({
+              where: { id: existing.id },
+              data: { isActive: true, displayName: displayName },
+            });
+            logger.info(`Reactivated enum: ${enumType}.${value}`);
           }
         }
       }
 
-      const message = newEnums.length > 0 
-        ? `Enum sync completed: ${newEnums.length} new enums added`
-        : "Enum sync completed: no new enums found";
+
+      const allEnumTypes: EnumType[] = ["StatusJt", "StatusInstalasi", "JenisKendala", "PlanTematik", "StatusUsulan", "Keterangan"];
+
+      for (const enumType of allEnumTypes) {
+        const sheetValues = sheetValuesMap.get(enumType);
+        if (!sheetValues) continue;
+
+        const sheetValueSet = new Set(sheetValues.keys());
+
+
+        const dbEnums = await prisma.enumValue.findMany({
+          where: {
+            enumType,
+            isActive: true,
+          },
+        });
+
+
+        for (const dbEnum of dbEnums) {
+          if (!sheetValueSet.has(dbEnum.value)) {
+            await prisma.enumValue.update({
+              where: { id: dbEnum.id },
+              data: { isActive: false },
+            });
+
+            deactivatedEnums.push({
+              enumType: enumType as EnumType,
+              value: dbEnum.value,
+              displayName: dbEnum.displayName || dbEnum.value,
+            });
+
+            logger.info(`Deactivated enum (not in sheet): ${enumType}.${dbEnum.value}`);
+          }
+        }
+      }
+
+      const message =
+        newEnums.length > 0 || deactivatedEnums.length > 0
+          ? `Enum sync completed: ${newEnums.length} new, ${deactivatedEnums.length} deactivated`
+          : "Enum sync completed: no changes";
 
       logger.info(message);
 
@@ -128,6 +175,7 @@ export class EnumValueService {
         success: true,
         message,
         newEnums,
+        deactivatedEnums,
       };
     } catch (error: any) {
       logger.error("Error syncing enums from sheets:", error);
@@ -143,13 +191,11 @@ export class EnumValueService {
 
     const result = {} as Record<EnumType, Array<{ id: string; value: string; displayName: string }>>;
 
-    // Initialize all enum types
     const enumTypes: EnumType[] = ["StatusJt", "StatusInstalasi", "JenisKendala", "PlanTematik", "StatusUsulan", "Keterangan"];
     enumTypes.forEach(type => {
       result[type] = [];
     });
 
-    // Group by enum type
     enumValues.forEach(enumValue => {
       const enumType = enumValue.enumType as EnumType;
       if (result[enumType]) {
@@ -185,9 +231,9 @@ export class EnumValueService {
 
     if (!enumValue) {
       try {
-        // Convert underscore to space for displayName, keep UPPERCASE
+
         const cleanDisplayName = displayName ? displayName.replace(/_/g, ' ') : normalizedValue.replace(/_/g, ' ');
-        
+
         enumValue = await prisma.enumValue.create({
           data: {
             enumType,
@@ -200,7 +246,7 @@ export class EnumValueService {
         logger.info(`Auto-created new enum: ${enumType}.${normalizedValue} with displayName: ${cleanDisplayName}`);
       } catch (error: any) {
         if (error.code === 'P2002') {
-          
+
           enumValue = await prisma.enumValue.findUnique({
             where: {
               enumType_value: {
@@ -209,7 +255,7 @@ export class EnumValueService {
               },
             },
           });
-          
+
           if (!enumValue) {
             throw new Error(`Failed to find enum ${enumType}.${normalizedValue} after race condition`);
           }
@@ -218,7 +264,7 @@ export class EnumValueService {
         }
       }
     } else if (displayName && enumValue.displayName !== displayName) {
-      // Update displayName: convert underscore to space, keep UPPERCASE
+
       const cleanDisplayName = displayName.replace(/_/g, ' ');
       if (enumValue.displayName !== cleanDisplayName) {
         try {
@@ -226,7 +272,7 @@ export class EnumValueService {
             where: { id: enumValue.id },
             data: { displayName: cleanDisplayName },
           });
-          // Only log if in development
+
           if (process.env.NODE_ENV !== 'production') {
             logger.info(`Updated displayName for ${enumType}.${normalizedValue}: ${cleanDisplayName}`);
           }
@@ -244,8 +290,8 @@ export class EnumValueService {
    * Returns true if valid, false otherwise
    */
   async validateEnumValue(enumType: EnumType, value: string | null): Promise<boolean> {
-    if (!value) return true; // null is valid
-    
+    if (!value) return true;
+
     const normalizedValue = this.normalizeEnumValue(value);
     if (!normalizedValue) return false;
 
@@ -279,22 +325,109 @@ export class EnumValueService {
   }
 
   private async collectSheetEnumValues(): Promise<Map<EnumType, Set<string>>> {
+    const valuesWithDisplayNames = await this.collectSheetEnumValuesWithDisplayNames();
+    const result = new Map<EnumType, Set<string>>();
+
+    for (const [enumType, valuesMap] of valuesWithDisplayNames.entries()) {
+      result.set(enumType, new Set(valuesMap.keys()));
+    }
+
+    return result;
+  }
+
+  private async collectSheetEnumValuesWithDisplayNames(): Promise<Map<EnumType, Map<string, string>>> {
     const summaryRows = await this.googleSheets.readRawSummaryRows();
     const detailRows = await this.googleSheets.readRawDetailRows();
-    const result = new Map<EnumType, Set<string>>();
+    const result = new Map<EnumType, Map<string, string>>();
+
+
+    const allEnumTypes: EnumType[] = ["StatusJt", "StatusInstalasi", "JenisKendala", "PlanTematik", "StatusUsulan", "Keterangan"];
+    for (const enumType of allEnumTypes) {
+      result.set(enumType, new Map<string, string>());
+    }
+
+
+    logger.info("Reading enum values from data validation rules...");
+    try {
+
+      const statusJtValidation = await this.googleSheets.readDataValidationValues('NDE USULAN B2B', 'B');
+      for (const value of statusJtValidation) {
+        const normalized = await this.normalizeEnumValue(value);
+        if (normalized) {
+          result.get('StatusJt')!.set(normalized, value.trim());
+        }
+      }
+      logger.info(`Found ${statusJtValidation.length} StatusJt values from data validation`);
+
+
+      const statusInstalasiValidation = await this.googleSheets.readDataValidationValues('NDE USULAN B2B', 'S');
+      for (const value of statusInstalasiValidation) {
+        const normalized = await this.normalizeStatusInstalasi(value);
+        if (normalized) {
+          result.get('StatusInstalasi')!.set(normalized, value.trim());
+        }
+      }
+      logger.info(`Found ${statusInstalasiValidation.length} StatusInstalasi values from data validation`);
+
+
+      const jenisKendalaValidation = await this.googleSheets.readDataValidationValues('NEW BGES B2B & OLO', 'L');
+      for (const value of jenisKendalaValidation) {
+        const normalized = await this.normalizeEnumValue(value);
+        if (normalized) {
+          result.get('JenisKendala')!.set(normalized, value.trim());
+        }
+      }
+      logger.info(`Found ${jenisKendalaValidation.length} JenisKendala values from data validation`);
+
+
+      const planTematikValidation = await this.googleSheets.readDataValidationValues('NEW BGES B2B & OLO', 'M');
+      for (const value of planTematikValidation) {
+        const normalized = await this.normalizeEnumValue(value);
+        if (normalized) {
+          result.get('PlanTematik')!.set(normalized, value.trim());
+        }
+      }
+      logger.info(`Found ${planTematikValidation.length} PlanTematik values from data validation`);
+
+
+      const statusUsulanValidation = await this.googleSheets.readDataValidationValues('NEW BGES B2B & OLO', 'P');
+      for (const value of statusUsulanValidation) {
+        const normalized = await this.normalizeEnumValue(value);
+        if (normalized) {
+          result.get('StatusUsulan')!.set(normalized, value.trim());
+        }
+      }
+      logger.info(`Found ${statusUsulanValidation.length} StatusUsulan values from data validation`);
+
+
+      const keteranganValidation = await this.googleSheets.readDataValidationValues('NEW BGES B2B & OLO', 'T');
+      for (const value of keteranganValidation) {
+        const normalized = await this.normalizeEnumValue(value);
+        if (normalized) {
+          result.get('Keterangan')!.set(normalized, value.trim());
+        }
+      }
+      logger.info(`Found ${keteranganValidation.length} Keterangan values from data validation`);
+    } catch (error: any) {
+      logger.warn(`Failed to read data validation: ${error.message}, falling back to data-only sync`);
+    }
+
 
     for (const source of this.enumSources) {
       const rows = source.sheet === "summary" ? summaryRows : detailRows;
       for (const row of rows) {
         if (!Array.isArray(row)) continue;
         const rawValue = row[source.columnIndex];
+        if (!rawValue) continue;
+
         const normalized = source.normalize(rawValue);
         if (!normalized) continue;
 
-        if (!result.has(source.enumType)) {
-          result.set(source.enumType, new Set<string>());
+        const displayName = String(rawValue).trim();
+
+        if (!result.get(source.enumType)!.has(normalized)) {
+          result.get(source.enumType)!.set(normalized, displayName);
         }
-        result.get(source.enumType)!.add(normalized);
       }
     }
 
@@ -318,7 +451,7 @@ export class EnumValueService {
 
     const mappings: Record<string, string> = {
       REVIEW: "REVIEW",
-      SURVEY: "SURVEY", 
+      SURVEY: "SURVEY",
       INSTALASI: "INSTALASI",
       "DONE INSTALASI": "DONE_INSTALASI",
       GOLIVE: "GO_LIVE",
@@ -356,16 +489,16 @@ export class EnumValueService {
 
       const updated: Array<{ enumType: string; value: string; oldDisplayName: string | null; newDisplayName: string }> = [];
 
-      // Read RAW data from sheets (without normalization)
+
       const rawSummaryRows = await this.googleSheets.readRawSummaryRows();
       const rawDetailRows = await this.googleSheets.readRawDetailRows();
 
-      // Map to track: normalized value -> original sheet format
-      const displayNameMap = new Map<string, Map<string, string>>(); // enumType -> (value -> displayName)
 
-      // Process summary data (raw rows)
+      const displayNameMap = new Map<string, Map<string, string>>();
+
+
       for (const row of rawSummaryRows) {
-        // StatusJt (column B / index 1)
+
         if (row[1]) {
           const rawValue = String(row[1]).trim();
           const normalized = this.normalizeEnumValue(rawValue);
@@ -378,9 +511,9 @@ export class EnumValueService {
         }
       }
 
-      // Process detail data (raw rows)
+
       for (const row of rawDetailRows) {
-        // JenisKendala (column L / index 11)
+
         if (row[11]) {
           const rawValue = String(row[11]).trim();
           const normalized = this.normalizeEnumValue(rawValue);
@@ -392,7 +525,7 @@ export class EnumValueService {
           }
         }
 
-        // PlanTematik (column M / index 12)
+
         if (row[12]) {
           const rawValue = String(row[12]).trim();
           const normalized = this.normalizeEnumValue(rawValue);
@@ -404,7 +537,7 @@ export class EnumValueService {
           }
         }
 
-        // StatusUsulan (column P / index 15)
+
         if (row[15]) {
           const rawValue = String(row[15]).trim();
           const normalized = this.normalizeEnumValue(rawValue);
@@ -416,7 +549,7 @@ export class EnumValueService {
           }
         }
 
-        // StatusInstalasi (column S / index 18)
+
         if (row[18]) {
           const rawValue = String(row[18]).trim();
           const normalized = this.normalizeStatusInstalasi(rawValue);
@@ -428,7 +561,7 @@ export class EnumValueService {
           }
         }
 
-        // Keterangan (column T / index 19)
+
         if (row[19]) {
           const rawValue = String(row[19]).trim();
           const normalized = this.normalizeEnumValue(rawValue);
@@ -441,7 +574,7 @@ export class EnumValueService {
         }
       }
 
-      // Update database
+
       for (const [enumType, valueMap] of displayNameMap.entries()) {
         for (const [value, displayName] of valueMap.entries()) {
           const existing = await prisma.enumValue.findUnique({

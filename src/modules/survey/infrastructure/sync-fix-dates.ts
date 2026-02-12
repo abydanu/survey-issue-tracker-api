@@ -16,11 +16,11 @@ export async function fixNullDatesFromDetailSheet(
   
   console.log(`Found ${nullDateRecords.length} records with null tanggal`);
   
-  // For each null date record, try to find matching data in detail sheet by name
+  
   for (const record of nullDateRecords) {
     if (!record.namaPelanggan) continue;
     
-    // Find in detail sheet by name
+    
     const matchingDetail = detailData.find(d => 
       d.namaPelanggan && 
       d.namaPelanggan.trim().toLowerCase() === record.namaPelanggan.trim().toLowerCase() &&

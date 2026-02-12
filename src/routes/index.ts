@@ -1,8 +1,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { createAuthRoutes } from '../modules/auth/presentation/auth.route.js';
 import { AuthController } from '../modules/auth/presentation/auth.controller.js';
-import { AuthService } from '../modules/auth/application/auth.service.js';
-import { AuthPrismaRepository } from '../modules/auth/infrastructure/auth.prisma.repository.js';
+import { authService } from '../shared/instances/auth.instance.js';
 import { createUserRoutes } from '../modules/user/presentation/user.route.js';
 import { UserController } from '../modules/user/presentation/user.controller.js';
 import { UserService } from '../modules/user/application/user.service.js';
@@ -17,8 +16,6 @@ import { SyncService } from '../modules/survey/application/sync.service.js';
 import { EnumService } from '../modules/survey/application/enum.service.js';
 import { SyncPrismaRepository } from '../modules/survey/infrastructure/sync.prisma.repository.js';
 
-const authRepo = new AuthPrismaRepository();
-const authService = new AuthService(authRepo);
 const authController = new AuthController(authService);
 
 const userRepo = new UserPrismaRepository();

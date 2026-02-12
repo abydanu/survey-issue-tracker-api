@@ -8,12 +8,8 @@ import {
   deleteUserRoute,
 } from './user.openapi.js';
 import { authMiddleware, adminMiddleware } from '../../../shared/middlewares/auth.middleware.js';
-import { AuthService } from '../../auth/application/auth.service.js';
-import { AuthPrismaRepository } from '../../auth/infrastructure/auth.prisma.repository.js';
+import { authService } from '../../../shared/instances/auth.instance.js';
 import { createZodErrorHook } from '../../../shared/utils/zod.js';
-
-const authRepo = new AuthPrismaRepository();
-const authService = new AuthService(authRepo);
 
 export const createUserRoutes = (controller: UserController) => {
   const zodErrorHook = createZodErrorHook();

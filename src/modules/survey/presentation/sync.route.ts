@@ -7,18 +7,13 @@ import {
   getChartProfitLossByMonthRoute,
   getStatsRoute,
   syncFromSheetsRoute,
-  fixEnumDisplayNamesRoute,
   cronSyncRoute,
   updateSurveyRoute,
   deleteSurveyRoute
 } from './sync.openapi.js';
 import { authMiddleware, adminMiddleware } from '../../../shared/middlewares/auth.middleware.js';
-import { AuthService } from '../../auth/application/auth.service.js';
-import { AuthPrismaRepository } from '../../auth/infrastructure/auth.prisma.repository.js';
+import { authService } from '../../../shared/instances/auth.instance.js';
 import { createZodErrorHook } from '../../../shared/utils/zod.js';
-
-const authRepo = new AuthPrismaRepository();
-const authService = new AuthService(authRepo);
 
 export const createSyncRoutes = (
   dashboardController: SyncController,
@@ -43,15 +38,12 @@ export const createSyncRoutes = (
     defaultHook: zodErrorHook,
   });
 
-  // Cron endpoint - NO auth middleware (uses x-cron-secret header)
   syncApp.openapi(cronSyncRoute, syncController.cronSync as any);
 
-  // Other sync endpoints - require auth + admin
   syncApp.use('*', authMiddleware(authService));
   syncApp.use('*', adminMiddleware());
 
   syncApp.openapi(syncFromSheetsRoute, syncController.syncFromSheets as any);
-  syncApp.openapi(fixEnumDisplayNamesRoute, syncController.fixEnumDisplayNames as any);
 
   const adminApp = new OpenAPIHono({
     defaultHook: zodErrorHook,

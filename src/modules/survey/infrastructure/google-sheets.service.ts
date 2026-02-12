@@ -170,7 +170,7 @@ export class GoogleSheetsService {
       }
 
       const findHeaderRowIndex = (allRows: any[][]): number => {
-        // Summary header biasanya berisi: "NO" di kolom A dan "Nomer NCX/Starclick" di kolom D
+        
         for (let i = 0; i < allRows.length; i++) {
           const row = allRows[i];
           if (!Array.isArray(row)) continue;
@@ -202,7 +202,7 @@ export class GoogleSheetsService {
         ) {
           const nomorNcxCell = String(row[3] ?? "").trim();
           if (nomorNcxCell !== "") {
-            // rowNumber untuk logging/debug: gunakan offset +1 dari dataRows start
+            
             const rowNumber =
               headerIdx >= 0 ? headerIdx + 1 + (index + 1) : 2 + (index + 1);
             results.push(await this.mapRowToSummary(row, rowNumber));
@@ -248,7 +248,7 @@ export class GoogleSheetsService {
     const rows = response.data.values;
     if (!rows || rows.length < 3) return [];
     const findHeaderRowIndex = (allRows: any[][]): number => {
-      // Detail header biasanya mengandung "ID KENDALA" dan "NEW SC"
+      
       for (let i = 0; i < allRows.length; i++) {
         const row = allRows[i];
         if (!Array.isArray(row)) continue;
@@ -289,6 +289,83 @@ export class GoogleSheetsService {
     };
     const headerIdx = findHeaderRowIndex(rows as any[][]);
     return headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
+  }
+
+  /**
+   * Read data validation rules from a specific column to get all possible enum values
+   * This is useful for getting dropdown options that may not be used in actual data
+   */
+  async readDataValidationValues(sheetName: string, column: string): Promise<string[]> {
+    try {
+      await this.ensureSheetConfigLoaded();
+      
+      const response = await this.sheets.spreadsheets.get({
+        spreadsheetId: this.spreadsheetId,
+        ranges: [`${sheetName}!${column}:${column}`],
+        includeGridData: true,
+      });
+
+      const sheets = response.data.sheets || [];
+      const values = new Set<string>();
+
+      for (const sheet of sheets) {
+        const data = sheet.data || [];
+        for (const gridData of data) {
+          const rowData = gridData.rowData || [];
+          
+          for (const row of rowData) {
+            const cells = row.values || [];
+            if (cells.length > 0 && cells[0].dataValidation) {
+              const validation = cells[0].dataValidation;
+              
+              
+              if (validation.condition?.type === 'ONE_OF_LIST') {
+                const listValues = validation.condition.values || [];
+                for (const v of listValues) {
+                  const val = v.userEnteredValue || '';
+                  if (val) values.add(String(val));
+                }
+              }
+              
+              
+              if (validation.condition?.type === 'ONE_OF_RANGE') {
+                const rangeValues = validation.condition.values || [];
+                for (const v of rangeValues) {
+                  if (v.userEnteredValue) {
+                    
+                    const formula = String(v.userEnteredValue);
+                    
+                    const rangeMatch = formula.match(/=(.+)!(.+)/);
+                    if (rangeMatch) {
+                      const [, refSheet, refRange] = rangeMatch;
+                      try {
+                        const refResponse = await this.sheets.spreadsheets.values.get({
+                          spreadsheetId: this.spreadsheetId,
+                          range: `${refSheet}!${refRange}`,
+                        });
+                        const refRows = refResponse.data.values || [];
+                        for (const refRow of refRows) {
+                          if (Array.isArray(refRow) && refRow[0]) {
+                            values.add(String(refRow[0]).trim());
+                          }
+                        }
+                      } catch (e) {
+                        logger.warn(`Failed to read validation range: ${formula}`);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return Array.from(values).filter(v => v && v !== '');
+    } catch (error: any) {
+      logger.warn(`Failed to read data validation for ${sheetName}!${column}: ${error.message}`);
+      return [];
+    }
   }
 
   async readRanges(ranges: string[]): Promise<Record<string, any[]>> {
@@ -394,10 +471,10 @@ export class GoogleSheetsService {
     const raw = String(input ?? "").trim();
     if (!raw) return null;
 
-    // Load enum mapping from database
+    
     await this.loadEnumMappingFromDatabase();
 
-    // Try database mapping first (displayName -> value)
+    
     if (enumType && this.reverseEnumMappingCache.has(enumType)) {
       const typeMapping = this.reverseEnumMappingCache.get(enumType)!;
       if (typeMapping.has(raw)) {
@@ -406,8 +483,8 @@ export class GoogleSheetsService {
       }
     }
 
-    // If not found in database, convert to UPPER_SNAKE_CASE as backend value
-    // This will be auto-created by findOrCreateEnumValue with displayName = raw
+    
+    
     return raw
       .toUpperCase()
       .replace(/^\d+\s*/g, "")
@@ -578,7 +655,7 @@ export class GoogleSheetsService {
 
       const rows = response.data.values || [];
       
-      // Skip only 1 row (header), not 2
+      
       const dataRows = rows.length < 2 ? [] : rows.slice(1);
 
       const normalizedSearchNo =
@@ -596,7 +673,7 @@ export class GoogleSheetsService {
         );
       });
 
-      return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
+      return idx >= 0 ? idx + 2 : null; 
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -615,14 +692,14 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 2 ? [] : rows.slice(1); // Skip only header
+      const dataRows = rows.length < 2 ? [] : rows.slice(1); 
 
       const idx = dataRows.findIndex((row: any[]) => {
         const cellValue = String(row[0] ?? "").trim();
         return cellValue === String(nomorNcx).trim();
       });
 
-      return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
+      return idx >= 0 ? idx + 2 : null; 
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -641,7 +718,7 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 2 ? [] : rows.slice(1); // Skip only header
+      const dataRows = rows.length < 2 ? [] : rows.slice(1); 
 
       const searchName = String(namaPelanggan).trim().toLowerCase();
       const idx = dataRows.findIndex((row: any[]) => {
@@ -649,7 +726,7 @@ export class GoogleSheetsService {
         return cellValue === searchName;
       });
 
-      return idx >= 0 ? idx + 2 : null; // +2 because we skipped 1 header row
+      return idx >= 0 ? idx + 2 : null; 
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -722,7 +799,7 @@ export class GoogleSheetsService {
           range: `${this.summarySheetName}!A:D`,
         });
         const rows = response.data.values || [];
-        const dataRows = rows.length < 2 ? [] : rows.slice(1); // Skip only header
+        const dataRows = rows.length < 2 ? [] : rows.slice(1); 
         const availableNos = dataRows
           .map((row: any[]) => String(row[0] ?? "").trim())
           .filter(Boolean);
@@ -1156,10 +1233,10 @@ export class GoogleSheetsService {
     const normalizeSheetId = (value: any): string => {
       const raw = String(value || "")
         .trim()
-        .replace(/^'/, ""); // handle Sheets "forced text" numbers
+        .replace(/^'/, ""); 
 
-      // Handle cases where Sheets API returns numeric-looking IDs with ".0"
-      // e.g. 1002249961.0 -> 1002249961
+      
+      
       if (/^\d+\.0$/.test(raw)) return raw.slice(0, -2);
       return raw;
     };

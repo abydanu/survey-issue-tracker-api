@@ -1,4 +1,4 @@
-# 📊 Survey Issue Tracker API
+# 📊 MadPro API
 
 > A robust REST API for tracking survey issues with real-time Google Sheets synchronization, built with modern TypeScript stack.
 

@@ -330,7 +330,6 @@ export class StatsService {
         totalPending++;
       }
 
-      // Count GO_LIVE based on statusInstalasi enum value
       if (statusInstalasi === "GO_LIVE") {
         totalGoLive++;
       }

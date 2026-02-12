@@ -1,9 +1,9 @@
 export const openApiConfig = {
   openapi: '3.0.0',
   info: {
-    title: 'Survey Issue Tracking API',
+    title: 'MadPro API',
     version: '1.0.0',
-    description: 'API Documentation untuk Survey Issue Tracking System',
+    description: 'API Documentation untuk Madiun B2B Project Dashboard',
     contact: {
       name: 'API Support',
       email: 'support@sit.com',

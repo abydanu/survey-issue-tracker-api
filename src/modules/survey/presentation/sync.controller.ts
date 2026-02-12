@@ -198,9 +198,9 @@ export class SyncController {
       const runInBackground = backgroundParam === 'true' || backgroundParam === '1';
       const skipEnumUpdate = skipEnumParam === 'true' || skipEnumParam === '1';
 
-      // If background mode, return immediately and process async
+      
       if (runInBackground) {
-        // Start sync in background (non-blocking)
+        
         this.syncService.autoSyncFromSheets(skipEnumUpdate)
           .then((result) => {
             const endTime = Date.now();
@@ -418,7 +418,7 @@ export class SyncController {
 
   cronSync = async (c: Context) => {
     try {
-      // Validate cron secret
+      
       const cronSecret = c.req.header('x-cron-secret');
       const expectedSecret = process.env.CRON_SECRET || 'change-this-secret-in-production';
       
@@ -435,13 +435,17 @@ export class SyncController {
       
       logger.info(`[CRON] Sync job ${jobId} started at ${startedAt}`);
 
+      // Check if should sync enums (default: skip for faster sync)
+      const skipEnumParam = c.req.query('skipEnum');
+      const skipEnumUpdate = skipEnumParam === undefined ? true : ['true', '1', 'yes'].includes(String(skipEnumParam).toLowerCase());
+      
       // Run sync in background (fire and forget)
-      // Always skip enum update for faster cron sync
-      this.syncService.autoSyncFromSheets(true)
+      this.syncService.autoSyncFromSheets(skipEnumUpdate)
         .then((result) => {
           logger.info({
             message: `[CRON] Sync job ${jobId} completed successfully`,
             syncStats: result.syncStats,
+            skipEnumUpdate,
           });
         })
         .catch((error: any) => {
@@ -452,12 +456,13 @@ export class SyncController {
           });
         });
 
-      // Return immediately
+      
       return c.json({
         success: true,
         message: 'Sync job started in background',
         jobId,
         startedAt,
+        skipEnumUpdate,
       }, 202);
     } catch (error: any) {
       logger.error('[CRON] Error starting sync job:', error);
@@ -465,16 +470,6 @@ export class SyncController {
         success: false,
         message: error.message || 'Failed to start sync job',
       }, 500);
-    }
-  };
-
-  fixEnumDisplayNames = async (c: Context) => {
-    try {
-      const result = await this.syncService.fixEnumDisplayNames();
-      return ApiResponseHelper.success(c, result, 'Successfully fixed enum displayNames');
-    } catch (error: any) {
-      logger.error('Fix enum displayNames error:', error);
-      return ApiResponseHelper.error(c, 'Failed to fix enum displayNames');
     }
   };
 }

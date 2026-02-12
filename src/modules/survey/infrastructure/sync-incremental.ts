@@ -87,7 +87,7 @@ export async function incrementalSyncFromSheets(
 
     
     logger.info(`Processing ${detailData.length} detail records...`);
-      const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
+      const BATCH_SIZE = 50; 
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
         const batch = detailData.slice(i, i + BATCH_SIZE);
@@ -194,7 +194,7 @@ export async function incrementalSyncFromSheets(
         }
       }
 
-    // Set of resolved idKendala untuk setiap baris NDE di sheet (supaya delete tidak salah hapus baris yang pakai NEW SC)
+    
     const sheetSummaryResolvedIds = new Set<string>();
 
     /**
@@ -253,7 +253,7 @@ export async function incrementalSyncFromSheets(
 
     if (summaryData.length > 0) {
       logger.info(`Processing ${summaryData.length} summary records...`);
-      const BATCH_SIZE = 50; // Increased from 10 to 50 for better performance
+      const BATCH_SIZE = 50; 
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
         const batch = summaryData.slice(i, i + BATCH_SIZE);
@@ -263,7 +263,7 @@ export async function incrementalSyncFromSheets(
             async (tx: any) => {
               for (const summary of batch) {
                 let nomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim();
-                // NO kadang kosong di sheet (mis. row 259); pakai nomorNcx sebagai fallback agar baris tetap masuk
+                
                 const no = (summary.no ?? summary.NO ?? summary.nomorNcx ?? nomorNcx ?? '').toString().trim();
 
                 if (!nomorNcx) {
@@ -276,13 +276,13 @@ export async function incrementalSyncFromSheets(
                 }
 
                 try {
-                  // Step 1: Cari master by idKendala (kolom Nomer NCX/Starclick di sheet bisa berisi idKendala)
+                  
                   let existingMaster = await tx.newBgesB2BOlo.findUnique({
                     where: { idKendala: nomorNcx },
                     select: { idKendala: true, namaPelanggan: true, newSc: true }
                   });
 
-                  // Step 2: Jika tidak ketemu, cari by newSc (kolom Nomer NCX/Starclick kadang berisi nomor NEW SC)
+                  
                   if (!existingMaster) {
                     existingMaster = await tx.newBgesB2BOlo.findFirst({
                       where: { newSc: nomorNcx },
@@ -294,9 +294,9 @@ export async function incrementalSyncFromSheets(
                     }
                   }
 
-                  // Step 3: Jika masih tidak ketemu dan nomor dari sheet numerik (idKendala/newSC), JANGAN match by nama
-                  // agar summary tetap punya nomorNcx = nilai sheet dan bisa ditemukan saat search (1002249961).
-                  // Match by nama hanya untuk nilai non-numerik (bisa salah link ke master lain).
+                  
+                  
+                  
                   const sheetNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim() ?? '';
                   const isNumericNcx = /^\d+$/.test(sheetNomorNcx);
                   if (!existingMaster && summary.namaPelanggan && !isNumericNcx) {
@@ -317,7 +317,7 @@ export async function incrementalSyncFromSheets(
                     }
                   }
 
-                  // Simpan idKendala yang dipakai untuk baris ini (untuk logika delete nanti)
+                  
                   sheetSummaryResolvedIds.add(nomorNcx);
 
                   if (!existingMaster) {
@@ -427,9 +427,9 @@ export async function incrementalSyncFromSheets(
       }
     }
 
-    // Delete records that exist in DB but not in sheets
+    
     const sheetDetailIds = new Set(detailData.map((d: any) => d.idKendala?.trim()).filter(Boolean));
-    // Pakai resolved idKendala (bukan raw dari sheet) supaya baris yang di sheet pakai NEW SC tidak ikut terhapus
+    
     const detailsToDelete = existingDetails.filter((d: any) => !sheetDetailIds.has(d.idKendala));
     const summariesToDelete = existingSummaries.filter((s: any) => !sheetSummaryResolvedIds.has(s.nomorNcx));
     
@@ -437,7 +437,7 @@ export async function incrementalSyncFromSheets(
       logger.info(`Deleting ${summariesToDelete.length} summaries and ${detailsToDelete.length} details...`);
       
       try {
-        // Batch delete summaries first (due to foreign key constraint)
+        
         if (summariesToDelete.length > 0) {
           const summaryIds = summariesToDelete.map((s: any) => s.id);
           const deleteResult = await prisma.ndeUsulanB2B.deleteMany({
@@ -446,7 +446,7 @@ export async function incrementalSyncFromSheets(
           stats.deleted += deleteResult.count;
         }
         
-        // Batch delete details
+        
         if (detailsToDelete.length > 0) {
           const detailIds = detailsToDelete.map((d: any) => d.idKendala);
           const deleteResult = await prisma.newBgesB2BOlo.deleteMany({

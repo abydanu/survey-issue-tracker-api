@@ -50,7 +50,7 @@ export interface NdeUsulanB2BRow {
   nomorNcx: string;
 
   statusJt?: string | null;
-  statusJtRaw?: string | null; // Original value from sheets for displayName
+  statusJtRaw?: string | null;
   c2r?: number | null;
   alamatInstalasi?: string | null;
   jenisLayanan?: string | null;

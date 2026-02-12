@@ -15,7 +15,7 @@ export class AdminService {
   }
   private syncService: SyncService;
   private enumValueService: EnumValueService;
-  private skipSheetSync: boolean = false; 
+  private skipSheetSync: boolean = false;
 
   constructor(private syncRepo: ISyncRepository, options?: { skipSheetSync?: boolean }) {
     this.syncService = new SyncService(syncRepo);
@@ -32,7 +32,7 @@ export class AdminService {
       logger.info(`Updating survey with nomorNcx: ${nomorNcx}`);
       logger.info(`Update data: ${JSON.stringify(data)}`);
 
-      // Validate enum values before update
+
       if (data.statusJt !== undefined && data.statusJt !== null) {
         const isValid = await this.enumValueService.validateEnumValue('StatusJt', data.statusJt);
         if (!isValid) {
@@ -98,7 +98,7 @@ export class AdminService {
           );
         }
       }
-      
+
       const existing = await this.syncRepo.findSurveyByNomorNc(nomorNcx);
       if (!existing) {
         logger.warn(`Survey not found for nomorNcx: ${nomorNcx}`);
@@ -107,7 +107,7 @@ export class AdminService {
 
       logger.info(`Found existing survey - id: ${existing.id}, no: ${existing.no}, nomorNcx: ${existing.nomorNcx}`);
 
-      // Handle tglInput update for master data
+
       if (data.tglInput !== undefined && data.tglInput !== null && existing.idKendala) {
         const parsedDate = data.tglInput instanceof Date ? data.tglInput : new Date(data.tglInput);
         if (!isNaN(parsedDate.getTime())) {
@@ -120,14 +120,14 @@ export class AdminService {
       const updated = await this.syncRepo.updateSurvey(nomorNcx, data);
       logger.info(`Survey updated successfully`);
 
-      // Sync to sheets (skip if flag is set for Vercel timeout protection)
+
       if (!this.skipSheetSync) {
         this.syncService
           .syncToSheets("update", "summary", {
             ...data,
             no: existing.no,
-            nomorNcx: updated.nomorNcx, // Use updated nomorNcx from result
-            namaPelanggan: existing.namaPelanggan, // Add customer name for fallback search
+            nomorNcx: updated.nomorNcx,
+            namaPelanggan: existing.namaPelanggan,
           } as any)
           .catch((error) => {
             logger.error({
@@ -137,28 +137,28 @@ export class AdminService {
             }, `Non-blocking sync to sheets failed for survey ${nomorNcx}`);
           });
 
-        // If statusUsulan, statusInstalasi, or tglInput was updated, also sync master data to sheets
-        const shouldSyncMasterData = 
-          data.statusUsulan !== undefined || 
-          data.statusInstalasi !== undefined || 
+
+        const shouldSyncMasterData =
+          data.statusUsulan !== undefined ||
+          data.statusInstalasi !== undefined ||
           data.tglInput !== undefined;
 
         if (shouldSyncMasterData && existing.idKendala) {
-          logger.info({ 
+          logger.info({
             idKendala: existing.idKendala,
             statusUsulan: data.statusUsulan,
             statusInstalasi: data.statusInstalasi,
             tglInput: data.tglInput
           }, 'Syncing master data to sheets');
-          
+
           const fullData = await this.syncRepo.getMasterDataByIdKendala(existing.idKendala);
           if (fullData) {
-            logger.info({ 
+            logger.info({
               idKendala: fullData.idKendala,
               statusUsulan: fullData.statusUsulan,
               statusInstalasi: fullData.statusInstalasi
             }, 'Master data fetched, syncing to sheet');
-            
+
             this.syncService
               .syncToSheets("update", "detail", fullData as any)
               .catch((error) => {
@@ -181,10 +181,10 @@ export class AdminService {
       );
       return updated;
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        nomorNcx 
+        nomorNcx
       }, 'Error updating survey');
       throw error;
     }
@@ -204,9 +204,9 @@ export class AdminService {
 
       await this.syncRepo.deleteSurvey(nomorNcx);
 
-      // Sync to sheets (skip if flag is set for Vercel timeout protection)
+
       if (!this.skipSheetSync) {
-        // Delete from summary sheet (Sheet 1 - NDE USULAN B2B)
+
         this.syncService
           .syncToSheets("delete", "summary", { no, nomorNcx, namaPelanggan } as any)
           .catch((error) => {
@@ -218,7 +218,7 @@ export class AdminService {
             }, `Non-blocking sync to sheets failed for deleted survey ${nomorNcx}`);
           });
 
-        // Delete from detail sheet (Sheet 2 - NEW BGES B2B & OLO) if idKendala exists
+
         if (idKendala) {
           this.syncService
             .syncToSheets("delete", "detail", { idKendala } as any)
@@ -236,10 +236,10 @@ export class AdminService {
 
       logger.info(`Admin deleted survey: nomorNcx ${nomorNcx} (no: ${no}, idKendala: ${idKendala})`);
     } catch (error: any) {
-      logger.error({ 
-        message: error.message, 
+      logger.error({
+        message: error.message,
         stack: error.stack,
-        nomorNcx 
+        nomorNcx
       }, 'Error deleting survey');
       throw error;
     }

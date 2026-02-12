@@ -24,8 +24,8 @@ const adapter = new PrismaPg(pool);
 export const prisma = new PrismaClient({ 
   adapter,
   transactionOptions: {
-    maxWait: 20000, // 20 seconds
-    timeout: 30000, // 30 seconds
+    maxWait: 20000, 
+    timeout: 30000, 
   },
 });
 

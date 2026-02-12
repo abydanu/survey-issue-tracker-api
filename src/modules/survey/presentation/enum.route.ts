@@ -2,12 +2,8 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { EnumController } from './enum.controller.js';
 import { getFilterEnumsRoute, getAllEnumsRoute } from './enum.openapi.js';
 import { authMiddleware } from '../../../shared/middlewares/auth.middleware.js';
-import { AuthService } from '../../auth/application/auth.service.js';
-import { AuthPrismaRepository } from '../../auth/infrastructure/auth.prisma.repository.js';
+import { authService } from '../../../shared/instances/auth.instance.js';
 import { createZodErrorHook } from '../../../shared/utils/zod.js';
-
-const authRepo = new AuthPrismaRepository();
-const authService = new AuthService(authRepo);
 
 export const createEnumRoutes = (enumController: EnumController) => {
   const zodErrorHook = createZodErrorHook();

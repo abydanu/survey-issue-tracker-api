@@ -20,7 +20,7 @@ export class EmailService {
   constructor(config: EmailConfig) {
     this.config = config;
     
-    // Log configuration (without sensitive data)
+    
     logger.info({
       fromEmail: config.fromEmail,
       fromName: config.fromName,
@@ -44,7 +44,7 @@ export class EmailService {
       logger.info({ to: options.to, subject: options.subject }, 'Attempting to send email via Brevo API');
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000); // 20 seconds total
+      const timeout = setTimeout(() => controller.abort(), 20000); 
 
       const response = await fetch(this.apiUrl, {
         method: 'POST',
@@ -132,7 +132,7 @@ export class EmailService {
                     
                     <!-- Main message -->
                     <p style="margin: 0 0 16px 0; color: #333333; font-size: 15px; line-height: 1.5; font-family: Arial, Helvetica, sans-serif;">
-                      Kami menerima permintaan untuk mereset password akun Anda di <strong>Survey Issue Tracker</strong>. Gunakan kode OTP berikut untuk melanjutkan proses reset password:
+                      Kami menerima permintaan untuk mereset password akun Anda di <strong>MadPro</strong>. Gunakan kode OTP berikut untuk melanjutkan proses reset password:
                     </p>
                     
                     <!-- OTP Container -->
@@ -182,7 +182,7 @@ export class EmailService {
                 <tr>
                   <td style="background-color: #f8f9fa; padding: 25px; text-align: center; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
                     <p style="margin: 8px 0; font-size: 13px; color: #1f2937; font-weight: 700; font-family: Arial, Helvetica, sans-serif;">
-                      Survey Issue Tracker
+                      MadPro
                     </p>
                     <p style="margin: 8px 0; font-size: 13px; color: #6b7280; font-family: Arial, Helvetica, sans-serif;">
                       Email ini dikirim secara otomatis, mohon jangan membalas email ini.
@@ -203,7 +203,7 @@ export class EmailService {
     `;
 
     const text = `
-      Reset Password - Survey Issue Tracker
+      Reset Password - MadPro
       
       ${greeting}
       
@@ -219,7 +219,7 @@ export class EmailService {
 
     return await this.sendEmail({
       to: email,
-      subject: 'Kode OTP Reset Password - Survey Issue Tracker',
+      subject: 'Kode OTP Reset Password - MadPro',
       html,
       text,
     });

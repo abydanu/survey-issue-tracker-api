@@ -54,7 +54,6 @@ const AdminEditableSurveyBaseSchema = z.object({
   no: z.string(),
 
   statusJt: z.string().nullable().optional(),
-  // c2r is a formula field in sheets, cannot be edited
   alamat: z.string().nullable().optional(),
   jenisLayanan: z.string().nullable().optional(),
   nilaiKontrak: z.union([z.string(), z.number()]).nullable().optional().transform(safeNumberTransform),
@@ -369,37 +368,6 @@ export const syncFromSheetsRoute = createRoute({
               }),
               processingTime: z.string(),
               batchesProcessed: z.number(),
-            }),
-          }),
-        },
-      },
-    },
-    401: {
-      description: 'Unauthorized',
-      content: {
-        'application/json': {
-          schema: ApiErrorResponseSchema,
-        },
-      },
-    },
-  },
-});
-
-export const fixEnumDisplayNamesRoute = createRoute({
-  method: 'post',
-  path: '/fix-enum-displaynames',
-  tags: ['Sync'],
-  summary: 'Fix Enum DisplayNames',
-  description: 'Replace underscore with space in all enum displayNames (Admin only)',
-  security: [{ bearerAuth: [] }],
-  responses: {
-    200: {
-      description: 'Successfully fixed enum displayNames',
-      content: {
-        'application/json': {
-          schema: ApiSuccessResponseSchema.extend({
-            data: z.object({
-              updated: z.number(),
             }),
           }),
         },

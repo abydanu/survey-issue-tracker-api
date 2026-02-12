@@ -33,7 +33,7 @@ export class SyncService {
     try {
       logger.info("Starting sync from Google Sheets...");
 
-      // Step 1: Auto-update displayNames from sheets first
+      
       logger.info("Auto-updating enum displayNames from Google Sheets...");
       try {
         await this.getEnumValueService().autoUpdateDisplayNamesFromSheets();
@@ -42,7 +42,7 @@ export class SyncService {
         logger.warn({ message: enumError.message }, "Failed to auto-update enum displayNames, continuing with sync...");
       }
 
-      // Step 2: Proceed with normal sync
+      
       const summaryData = await this.getGoogleSheets().readSummaryData();
       const detailData = await this.getGoogleSheets().readDetailData();
 
@@ -139,87 +139,6 @@ export class SyncService {
     }
   }
 
-  async syncBatch(batchNumber: number, batchSize: number): Promise<{
-    processedInBatch: number;
-    totalProcessed: number;
-    totalRecords: number;
-    remaining: number;
-    completed: boolean;
-    stats: {
-      created: number;
-      updated: number;
-      skipped: number;
-      errors: number;
-    };
-  }> {
-    try {
-      logger.info(`Starting batch ${batchNumber} with size ${batchSize}...`);
-
-      // Fetch all data once (cached in memory for this request)
-      const summaryData = await this.getGoogleSheets().readSummaryData();
-      const detailData = await this.getGoogleSheets().readDetailData();
-
-      const totalRecords = summaryData.length + detailData.length;
-      
-      // Calculate batch range
-      const startIndex = batchNumber * batchSize;
-      const endIndex = Math.min(startIndex + batchSize, totalRecords);
-      
-      // Check if completed before processing
-      if (startIndex >= totalRecords) {
-        logger.info(`Batch ${batchNumber} skipped: already completed`);
-        return {
-          processedInBatch: 0,
-          totalProcessed: totalRecords,
-          totalRecords,
-          remaining: 0,
-          completed: true,
-          stats: { created: 0, updated: 0, skipped: 0, errors: 0 }
-        };
-      }
-
-      // Split data into detail and summary for this batch
-      let detailBatch: any[] = [];
-      let summaryBatch: any[] = [];
-
-      // Process detail first, then summary
-      if (startIndex < detailData.length) {
-        const detailEnd = Math.min(endIndex, detailData.length);
-        detailBatch = detailData.slice(startIndex, detailEnd);
-      }
-
-      if (endIndex > detailData.length) {
-        const summaryStart = Math.max(0, startIndex - detailData.length);
-        const summaryEnd = endIndex - detailData.length;
-        summaryBatch = summaryData.slice(summaryStart, summaryEnd);
-      }
-
-      logger.info(`Processing batch ${batchNumber}: ${detailBatch.length} detail + ${summaryBatch.length} summary records`);
-
-      // Process batch
-      const stats = await this.syncRepo.autoSyncFromSheets(summaryBatch, detailBatch);
-
-      const processedInBatch = detailBatch.length + summaryBatch.length;
-      const totalProcessed = endIndex;
-      const remaining = Math.max(0, totalRecords - totalProcessed);
-      const completed = remaining === 0;
-
-      logger.info(`Batch ${batchNumber} completed: ${processedInBatch} processed, ${remaining} remaining`);
-
-      return {
-        processedInBatch,
-        totalProcessed,
-        totalRecords,
-        remaining,
-        completed,
-        stats
-      };
-    } catch (error: any) {
-      logger.error(`Error in batch ${batchNumber}:`, error);
-      throw new Error(`Batch sync failed: ${error.message}`);
-    }
-  }
-
   async autoSyncFromSheets(skipEnumUpdate: boolean = false): Promise<{
     success: boolean;
     message: string;
@@ -237,20 +156,25 @@ export class SyncService {
     try {
       logger.info("Starting incremental sync from Google Sheets...");
 
-      // Step 1: Auto-update displayNames from sheets (optional)
+      
       if (!skipEnumUpdate) {
-        logger.info("Auto-updating enum displayNames from Google Sheets...");
+        logger.info("Syncing enums from Google Sheets...");
         try {
+          
+          const enumSyncResult = await this.getEnumValueService().syncEnumsFromSheets();
+          logger.info(`Enum sync completed: ${enumSyncResult.newEnums.length} new enums added, ${enumSyncResult.deactivatedEnums.length} deactivated`);
+          
+          
           await this.getEnumValueService().autoUpdateDisplayNamesFromSheets();
           logger.info("Enum displayNames updated successfully");
         } catch (enumError: any) {
-          logger.warn({ message: enumError.message }, "Failed to auto-update enum displayNames, continuing with sync...");
+          logger.warn({ message: enumError.message }, "Failed to sync enums, continuing with sync...");
         }
       } else {
-        logger.info("Skipping enum displayNames update (skipEnumUpdate=true)");
+        logger.info("Skipping enum sync (skipEnumUpdate=true)");
       }
 
-      // Step 2: Fetch data from Google Sheets
+      
       logger.info("Fetching data from Google Sheets...");
       const summaryData = await this.getGoogleSheets().readSummaryData();
       const detailData = await this.getGoogleSheets().readDetailData();
@@ -259,7 +183,7 @@ export class SyncService {
 
       const totalRecords = summaryData.length + detailData.length;
 
-      // Step 3: Use incremental sync (only new/updated/deleted)
+      
       const { incrementalSyncFromSheets } = await import('../infrastructure/sync-incremental.js');
       
       const syncStats = await incrementalSyncFromSheets(
@@ -269,7 +193,7 @@ export class SyncService {
         detailData
       );
 
-      // Step 4: Fix null dates by matching customer names
+      
       const { fixNullDatesFromDetailSheet } = await import('../infrastructure/sync-fix-dates.js');
       const fixResult = await fixNullDatesFromDetailSheet(prisma, detailData);
       
@@ -277,7 +201,7 @@ export class SyncService {
         logger.info(`Fixed ${fixResult.fixed} records with null tanggal by matching customer names`);
       }
 
-      // Tidak membuat summary untuk master-only: /api/survey hanya menampilkan data yang ada di sheet NDE USULAN B2B
+      
 
       const successMessage = `Sync completed! ${syncStats.created} created, ${syncStats.updated} updated, ${syncStats.deleted} deleted${fixResult.fixed > 0 ? `, ${fixResult.fixed} dates fixed` : ''}`;
 
@@ -480,48 +404,6 @@ export class SyncService {
     } catch (error: any) {
       logger.error("Error validating sync data:", error);
       throw new Error(`Gagal melakukan validasi data sync: ${error.message}`);
-    }
-  }
-
-  async fixEnumDisplayNames(): Promise<{
-    success: boolean;
-    message: string;
-    updated: number;
-  }> {
-    try {
-      logger.info('Fixing enum displayNames (replace underscore with space)...');
-      
-      const enumsWithUnderscore = await prisma.enumValue.findMany({
-        where: {
-          displayName: {
-            contains: '_'
-          }
-        }
-      });
-      
-      logger.info(`Found ${enumsWithUnderscore.length} enums with underscore in displayName`);
-      
-      let updated = 0;
-      for (const enumValue of enumsWithUnderscore) {
-        const cleanDisplayName = enumValue.displayName?.replace(/_/g, ' ') || enumValue.value.replace(/_/g, ' ');
-        
-        await prisma.enumValue.update({
-          where: { id: enumValue.id },
-          data: { displayName: cleanDisplayName }
-        });
-        
-        logger.info(`Updated ${enumValue.enumType}.${enumValue.value}: "${enumValue.displayName}" -> "${cleanDisplayName}"`);
-        updated++;
-      }
-      
-      return {
-        success: true,
-        message: `Fixed ${updated} enum displayNames`,
-        updated
-      };
-    } catch (error: any) {
-      logger.error('Error fixing enum displayNames:', error);
-      throw new Error(`Failed to fix enum displayNames: ${error.message}`);
     }
   }
 }
