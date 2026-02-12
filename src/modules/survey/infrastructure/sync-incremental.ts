@@ -197,15 +197,6 @@ export async function incrementalSyncFromSheets(
     
     const sheetSummaryResolvedIds = new Set<string>();
 
-    /**
-     * IMPORTANT:
-     * Summary sheet memiliki kolom `no` yang unik di DB.
-     * Kalau ada record lama yang sudah hilang dari sheet tapi belum di-delete,
-     * record baru dengan `no` yang sama akan gagal create (P2002) sebelum fase delete dijalankan.
-     *
-     * Jadi kita lakukan pre-delete untuk summary yang jelas-jelas tidak ada di sheet (berdasarkan nomorNCX/newSC),
-     * sebelum proses upsert summary dimulai.
-     */
     if (summaryData.length > 0 && existingSummaries.length > 0) {
       const rawSheetNomorValues = Array.from(
         new Set(

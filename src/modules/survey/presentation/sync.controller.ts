@@ -5,8 +5,8 @@ import { SyncService } from '../application/sync.service.js';
 import ApiResponseHelper from '../../../shared/utils/response.js';
 import { serializeBigInt } from '../../../shared/utils/bigint.js';
 import logger from '../../../infrastructure/logging/logger.js';
+import { ErrorSanitizer } from '../../../shared/utils/error-sanitizer.js';
 import type {
-  CreateSurveyDto,
   UpdateSurveyDto,
   DashboardQuery,
 } from '../domain/sync.entity.js';
@@ -55,7 +55,7 @@ export class SyncController {
       });
     } catch (error: any) {
       logger.error('Get survey error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to fetch survey data');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to fetch survey data'));
     }
   };
 
@@ -75,7 +75,7 @@ export class SyncController {
       return ApiResponseHelper.success(c, data, 'Statistics data');
     } catch (error: any) {
       logger.error('Stats error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to fetch stats data');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to fetch stats data'));
     }
   };
 
@@ -162,7 +162,7 @@ export class SyncController {
       );
     } catch (error: any) {
       logger.error('Get sync status error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to fetch sync status');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to fetch sync status'));
     }
   };
 
@@ -262,15 +262,14 @@ export class SyncController {
     } catch (error: any) {
       logger.error('Sync error:', error);
       
-      if (error.message?.includes('timeout')) {
+      if (ErrorSanitizer.isTimeoutError(error)) {
         return c.json({
           success: false,
-          message: 'Sync timeout - try using ?skipEnum=true or ?background=true for faster sync',
-          error: error.message
+          message: 'Sync timeout - try using ?skipEnum=true or ?background=true for faster sync'
         }, 408);
       }
       
-      return ApiResponseHelper.error(c, error.message || 'Sync failed - please try again');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Sync failed - please try again'));
     }
   };
 
@@ -286,8 +285,8 @@ export class SyncController {
       const message = result.message || (dryRun ? 'Enum sync dry run' : 'Enum sync completed');
       return ApiResponseHelper.success(c, result, message);
     } catch (error: any) {
-      logger.error('Sync enums from sheets error:', error.message);
-      return ApiResponseHelper.error(c, 'Failed to sync enums from Google Sheets');
+      logger.error('Sync enums from sheets error:', error);
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to sync enums from Google Sheets'));
     }
   };
 
@@ -296,8 +295,8 @@ export class SyncController {
       const result = await this.syncService.validateSyncData();
       return ApiResponseHelper.success(c, result, 'Successfully validated sync data');
     } catch (error: any) {
-      logger.error('Validate sync data error:', error.message);
-      return ApiResponseHelper.error(c, 'Failed to validate sync data');
+      logger.error('Validate sync data error:', error);
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to validate sync data'));
     }
   };
 
@@ -330,7 +329,7 @@ export class SyncController {
         nomorNc: c.req.param('nomorNcx')
       }, 'Update survey error');
 
-      if (error.message?.includes('timeout')) {
+      if (ErrorSanitizer.isTimeoutError(error)) {
         return c.json({
           success: true,
           message: 'Update processing - may take a moment to sync to sheets',
@@ -338,13 +337,11 @@ export class SyncController {
         }, 202);
       }
 
-      if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
+      if (ErrorSanitizer.isNotFoundError(error)) {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
-
-      logger.error(error.message, 'Fatal Error')
       
-      return ApiResponseHelper.error(c, 'Failed to update survey');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to update survey'));
     }
   };
 
@@ -375,7 +372,7 @@ export class SyncController {
     } catch (error: any) {
       logger.error('Delete survey error:', error);
 
-      if (error.message?.includes('timeout')) {
+      if (ErrorSanitizer.isTimeoutError(error)) {
         return c.json({
           success: true,
           message: 'Delete processing - may take a moment to sync to sheets',
@@ -383,10 +380,10 @@ export class SyncController {
         }, 202);
       }
 
-      if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
+      if (ErrorSanitizer.isNotFoundError(error)) {
         return ApiResponseHelper.notFound(c, 'Survey not found');
       }
-      return ApiResponseHelper.error(c, 'Failed to delete survey');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to delete survey'));
     }
   };
 
@@ -406,13 +403,13 @@ export class SyncController {
       );
     } catch (error: any) {
       logger.error('Update tanggal input error:', error);
-      if (error.message?.includes('not found') || error.message?.includes('tidak ditemukan')) {
+      if (ErrorSanitizer.isNotFoundError(error)) {
         return ApiResponseHelper.notFound(c, 'Master data not found');
       }
-      if (error.message?.includes('Format tanggal')) {
-        return ApiResponseHelper.error(c, error.message, 400);
+      if (ErrorSanitizer.isValidationError(error)) {
+        return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Invalid date format'), 400);
       }
-      return ApiResponseHelper.error(c, 'Failed to update tanggal input');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to update tanggal input'));
     }
   };
 
@@ -435,11 +432,9 @@ export class SyncController {
       
       logger.info(`[CRON] Sync job ${jobId} started at ${startedAt}`);
 
-      // Check if should sync enums (default: skip for faster sync)
       const skipEnumParam = c.req.query('skipEnum');
       const skipEnumUpdate = skipEnumParam === undefined ? true : ['true', '1', 'yes'].includes(String(skipEnumParam).toLowerCase());
       
-      // Run sync in background (fire and forget)
       this.syncService.autoSyncFromSheets(skipEnumUpdate)
         .then((result) => {
           logger.info({
@@ -468,7 +463,7 @@ export class SyncController {
       logger.error('[CRON] Error starting sync job:', error);
       return c.json({
         success: false,
-        message: error.message || 'Failed to start sync job',
+        message: ErrorSanitizer.sanitize(error, 'Failed to start sync job'),
       }, 500);
     }
   };

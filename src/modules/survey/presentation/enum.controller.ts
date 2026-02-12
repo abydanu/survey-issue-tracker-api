@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import { EnumService } from '../application/enum.service.js';
 import ApiResponseHelper from '../../../shared/utils/response.js';
 import logger from '../../../infrastructure/logging/logger.js';
+import { ErrorSanitizer } from '../../../shared/utils/error-sanitizer.js';
 
 export class EnumController {
   constructor(private enumService: EnumService) {}
@@ -17,7 +18,7 @@ export class EnumController {
       );
     } catch (error: any) {
       logger.error('Get filter enums error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to fetch filter enums');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to fetch filter enums'));
     }
   };
 
@@ -32,7 +33,7 @@ export class EnumController {
       );
     } catch (error: any) {
       logger.error('Get all enums error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Failed to fetch all enums');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to fetch all enums'));
     }
   };
 
@@ -50,7 +51,7 @@ export class EnumController {
       );
     } catch (error: any) {
       logger.error({ message: error.message, stack: error.stack }, 'Auto-update displayNames error');
-      return ApiResponseHelper.error(c, error.message || 'Failed to auto-update displayNames');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to auto-update displayNames'));
     }
   };
 }

@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import { AuthService } from '../application/auth.service.js';
 import ApiResponseHelper from '../../../shared/utils/response.js';
 import logger from '../../../infrastructure/logging/logger.js';
+import { ErrorSanitizer } from '../../../shared/utils/error-sanitizer.js';
 import type { LoginCredentials, ForgotPasswordRequest, VerifyOtpRequest, ResetPasswordRequest } from '../domain/auth.entity.js';
 
 export class AuthController {
@@ -14,7 +15,7 @@ export class AuthController {
       return ApiResponseHelper.success(c, result, 'Login successful');
     } catch (error: any) {
       logger.error('Login error:', error);
-      return ApiResponseHelper.error(c, error.message || 'Login failed');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Login failed'));
     }
   };
 
@@ -33,7 +34,7 @@ export class AuthController {
       return ApiResponseHelper.success(c, null, 'Logout successful');
     } catch (error: any) {
       logger.error('Logout error:', error);
-      return ApiResponseHelper.unauthorized(c, error.message || 'Logout failed');
+      return ApiResponseHelper.unauthorized(c, ErrorSanitizer.sanitize(error, 'Logout failed'));
     }
   };
 
@@ -51,7 +52,7 @@ export class AuthController {
       return ApiResponseHelper.success(c, user, 'User data fetched successfully');
     } catch (error: any) {
       logger.error('Get user error:', error);
-      return ApiResponseHelper.unauthorized(c, error.message || 'Invalid or expired token');
+      return ApiResponseHelper.unauthorized(c, ErrorSanitizer.sanitize(error, 'Invalid or expired token'));
     }
   };
 
@@ -71,7 +72,7 @@ export class AuthController {
       );
     } catch (error: any) {
       logger.error({ message: error.message, stack: error.stack }, 'Forgot password error');
-      return ApiResponseHelper.error(c, error.message || 'Failed to process forgot password request');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to process forgot password request'));
     }
   };
 
@@ -92,11 +93,11 @@ export class AuthController {
     } catch (error: any) {
       logger.error({ message: error.message, stack: error.stack }, 'Resend OTP error');
 
-      if (error.message.includes('wait at least')) {
-        return ApiResponseHelper.error(c, error.message, undefined, 429);
+      if (ErrorSanitizer.isTimeoutError(error) || error.message?.includes('wait at least')) {
+        return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Please wait before requesting another OTP'), undefined, 429);
       }
 
-      return ApiResponseHelper.error(c, error.message || 'Failed to resend OTP');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to resend OTP'));
     }
   };
 
@@ -113,11 +114,11 @@ export class AuthController {
         return ApiResponseHelper.success(c, { valid: true }, 'OTP verified successfully');
       } else {
         logger.warn({ email: body.email, reason: result.message }, 'OTP verification failed');
-        return ApiResponseHelper.error(c, result.message, undefined, 400);
+        return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(result, 'OTP verification failed'), undefined, 400);
       }
     } catch (error: any) {
       logger.error({ message: error.message, stack: error.stack }, 'Verify OTP error');
-      return ApiResponseHelper.error(c, error.message || 'Failed to verify OTP');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to verify OTP'));
     }
   };
 
@@ -141,7 +142,7 @@ export class AuthController {
         stack: error.stack
       }, 'Reset password error');
       
-      return ApiResponseHelper.error(c, error.message || 'Failed to reset password');
+      return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, 'Failed to reset password'));
     }
   };
 }

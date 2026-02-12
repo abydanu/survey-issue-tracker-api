@@ -25,7 +25,7 @@ export class AuthService {
     this.emailService = new EmailService({
       apiKey: process.env.BREVO_API_KEY || '',
       fromEmail: process.env.BREVO_FROM || '',
-      fromName: process.env.BREVO_SENDER_NAME || 'Survey Issue Tracker',
+      fromName: process.env.BREVO_SENDER_NAME || 'MadPro',
     });
   }
 
@@ -98,7 +98,13 @@ export class AuthService {
         }
       }
 
-      return decoded;
+      return {
+        userId: decoded.userId,
+        username: decoded.username,
+        email: decoded.email,
+        role: decoded.role,
+        name: decoded.name,
+      };
     } catch (error) {
       logger.warn('Token verification failed');
       throw new Error('Invalid or expired token');

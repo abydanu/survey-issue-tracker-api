@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { UserService } from "../application/user.service.js";
 import ApiResponseHelper from "../../../shared/utils/response.js";
 import logger from "../../../infrastructure/logging/logger.js";
+import { ErrorSanitizer } from "../../../shared/utils/error-sanitizer.js";
 import type { CreateUserDto, UpdateUserDto } from "../domain/user.entity.js";
 import type { TokenPayload } from "../../../modules/auth/domain/auth.entity.js";
 
@@ -35,7 +36,7 @@ export class UserController {
       logger.error("Get all users error:", error);
       return ApiResponseHelper.error(
         c,
-        error.message || "Failed to fetch all users"
+        ErrorSanitizer.sanitize(error, "Failed to fetch all users")
       );
     }
   };
@@ -47,12 +48,12 @@ export class UserController {
       return ApiResponseHelper.success(c, user, "Successfully fetched user ");
     } catch (error: any) {
       logger.error("Get user by id error:", error);
-      if (error.message === "User tidak ditemukan") {
-        return ApiResponseHelper.notFound(c, error.message);
+      if (ErrorSanitizer.isNotFoundError(error)) {
+        return ApiResponseHelper.notFound(c, "User not found");
       }
       return ApiResponseHelper.error(
         c,
-        error.message || "Failed to fetch user details"
+        ErrorSanitizer.sanitize(error, "Failed to fetch user details")
       );
     }
   };
@@ -69,12 +70,12 @@ export class UserController {
       );
     } catch (error: any) {
       logger.error("Create user error:", error);
-      if (error.message === "Username sudah digunakan") {
-        return ApiResponseHelper.error(c, error.message, 400);
+      if (ErrorSanitizer.isConflictError(error)) {
+        return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, "Username already exists"), 400);
       }
       return ApiResponseHelper.error(
         c,
-        error.message || "Failed to create user"
+        ErrorSanitizer.sanitize(error, "Failed to create user")
       );
     }
   };
@@ -118,25 +119,19 @@ export class UserController {
         stack: error.stack 
       }, 'Update user error');
 
-      if (error.message?.includes("not found")) {
+      if (ErrorSanitizer.isNotFoundError(error)) {
         return ApiResponseHelper.notFound(c, "User not found");
       }
-      if (
-        error.message?.includes("already exists") ||
-        error.message?.includes("already used")
-      ) {
+      if (ErrorSanitizer.isConflictError(error)) {
         return ApiResponseHelper.error(c, "Username already exists", 400);
       }
-      if (
-        error.message?.includes("incorrect") ||
-        error.message?.includes("wrong password")
-      ) {
-        return ApiResponseHelper.error(c, "Old password is incorrect", 400);
+      if (ErrorSanitizer.isUnauthorizedError(error) || error.message?.includes("incorrect") || error.message?.includes("wrong password")) {
+        return ApiResponseHelper.error(c, ErrorSanitizer.sanitize(error, "Old password is incorrect"), 400);
       }
 
       return ApiResponseHelper.error(
         c,
-        error.message || "Failed to update user",
+        ErrorSanitizer.sanitize(error, "Failed to update user"),
         400
       );
     }
@@ -164,12 +159,12 @@ export class UserController {
         stack: error.stack 
       }, 'Delete user error');
       
-      if (error.message?.includes("not found") || error.message?.includes("tidak ditemukan")) {
+      if (ErrorSanitizer.isNotFoundError(error)) {
         return ApiResponseHelper.notFound(c, "User not found");
       }
       return ApiResponseHelper.error(
         c,
-        error.message || "Failed to delete user"
+        ErrorSanitizer.sanitize(error, "Failed to delete user")
       );
     }
   };

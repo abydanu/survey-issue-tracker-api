@@ -14,14 +14,7 @@ export interface SyncValidationResult {
   };
 }
 
-/**
- * Validate sync data before attempting to sync to database
- * This helps identify foreign key constraint issues before they occur
- */
 export class SyncValidationHelper {
-  /**
-   * Validate that all nomorNcx values in summary data have corresponding idKendala in detail data
-   */
   static async validateSyncData(
     summaryData: Array<{ no?: string; nomorNcx?: string }>,
     detailData: Array<{ idKendala?: string }>
@@ -116,9 +109,6 @@ export class SyncValidationHelper {
     return result;
   }
 
-  /**
-   * Check existing database for orphaned records
-   */
   static async checkDatabaseIntegrity(): Promise<{
     orphanedRecords: Array<{ no: string; nomorNcx: string }>;
     missingMasterData: string[];
@@ -153,9 +143,6 @@ export class SyncValidationHelper {
     };
   }
 
-  /**
-   * Generate a detailed validation report
-   */
   static generateValidationReport(validationResult: SyncValidationResult): string {
     const lines = [
       '=== SYNC VALIDATION REPORT ===',

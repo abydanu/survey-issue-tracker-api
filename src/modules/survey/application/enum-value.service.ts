@@ -285,10 +285,6 @@ export class EnumValueService {
     return enumValue.id;
   }
 
-  /**
-   * Validate if enum value exists in database (without creating)
-   * Returns true if valid, false otherwise
-   */
   async validateEnumValue(enumType: EnumType, value: string | null): Promise<boolean> {
     if (!value) return true;
 
@@ -307,9 +303,7 @@ export class EnumValueService {
     return enumValue !== null;
   }
 
-  /**
-   * Get all valid values for an enum type
-   */
+  
   async getValidValues(enumType: EnumType): Promise<string[]> {
     const enumValues = await prisma.enumValue.findMany({
       where: {
@@ -475,10 +469,6 @@ export class EnumValueService {
       .join(' ');
   }
 
-  /**
-   * Auto-update displayName from Google Sheets format
-   * This will scan sheets and update displayName for all enum values
-   */
   async autoUpdateDisplayNamesFromSheets(): Promise<{
     success: boolean;
     message: string;

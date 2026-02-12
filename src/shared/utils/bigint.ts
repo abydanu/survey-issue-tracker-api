@@ -1,6 +1,3 @@
-/**
- * Recursively convert BigInt values to strings for JSON serialization
- */
 export function serializeBigInt<T>(obj: T): any {
   if (obj === null || obj === undefined) {
     return obj;

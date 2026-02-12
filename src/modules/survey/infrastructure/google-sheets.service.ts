@@ -291,10 +291,6 @@ export class GoogleSheetsService {
     return headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows.slice(2);
   }
 
-  /**
-   * Read data validation rules from a specific column to get all possible enum values
-   * This is useful for getting dropdown options that may not be used in actual data
-   */
   async readDataValidationValues(sheetName: string, column: string): Promise<string[]> {
     try {
       await this.ensureSheetConfigLoaded();
