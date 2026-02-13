@@ -296,14 +296,14 @@ export class StatsService {
     const surveys = await prisma.ndeUsulanB2B.findMany({
       where,
       select: {
+        statusJt: {
+          select: {
+            value: true,
+          },
+        },
         masterData: {
           select: {
             statusUsulan: {
-              select: {
-                value: true,
-              },
-            },
-            statusInstalasi: {
               select: {
                 value: true,
               },
@@ -320,7 +320,7 @@ export class StatsService {
 
     for (const s of surveys) {
       const statusUsulan = s.masterData?.statusUsulan?.value;
-      const statusInstalasi = s.masterData?.statusInstalasi?.value;
+      const statusJt = s.statusJt?.value;
 
       if (
         statusUsulan &&
@@ -330,7 +330,7 @@ export class StatsService {
         totalPending++;
       }
 
-      if (statusInstalasi === "GO_LIVE") {
+      if (statusJt === "GOLIVE") {
         totalGoLive++;
       }
 

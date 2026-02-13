@@ -266,7 +266,7 @@ export const getStatsRoute = createRoute({
                 example: 45,
               }),
               totalGoLive: z.number().openapi({
-                description: 'Total surveys with GO_LIVE status',
+                description: 'Total surveys with GOLIVE status from statusJt',
                 example: 80,
               }),
               approvalRate: z.number().openapi({
