@@ -33,8 +33,7 @@ export const createApp = () => {
       return allowed[0];
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
-    exposeHeaders: ['Content-Type', 'ngrok-skip-browser-warning'],
+    allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   }));
   app.use('*', honoLogger());
