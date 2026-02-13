@@ -28,6 +28,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # google service account
 google-service-account.json
+google-service-account-aby-danu.json
 
 # IntelliJ based IDEs
 .idea
