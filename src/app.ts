@@ -41,7 +41,7 @@ export const createApp = () => {
 
   app.get('/', (c: Context) => {
     return ApiResponseHelper.success(c, { 
-      name: 'Survey Issue Tracking API',
+      name: 'MadPro API',
       version: '1.0.0',
       status: 'running',
       author: 'Aby Danu',
@@ -53,7 +53,7 @@ export const createApp = () => {
 
   app.get('/docs', swaggerUI({ 
     url: '/api/openapi.json',
-    title: 'Survey Issue Tracking API Documentation',
+    title: 'MadPro API Documentation',
     persistAuthorization: true,
     deepLinking: true,
   }));
