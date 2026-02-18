@@ -124,7 +124,7 @@ export interface DashboardQuery {
   page?: number;
   limit?: number;
   search?: string;
-  statusJt?: string;
+  statusJt?: string | string[];
   rabHldMin?: number;
   rabHldMax?: number;
   tahun?: string;

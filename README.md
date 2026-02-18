@@ -152,6 +152,60 @@ Once the server is running, visit:
 - **Swagger UI**: http://localhost:5000/docs
 - **OpenAPI JSON**: http://localhost:5000/docs/openapi.json
 
+### Multiple Status Filter
+
+API mendukung filtering dengan multiple status values. Anda bisa memilih lebih dari satu status untuk filter:
+
+**Single Status:**
+```bash
+GET /api/sync?statusJt=APPROVE
+```
+
+**Multiple Status (Comma-separated - Recommended):**
+```bash
+GET /api/sync?statusJt=APPROVE,GOLIVE,PENDING
+```
+
+**Multiple Status (Repeat parameter - Alternative):**
+```bash
+GET /api/sync?statusJt=APPROVE&statusJt=GOLIVE&statusJt=PENDING
+```
+
+**Contoh dengan cURL:**
+```bash
+# Single status
+curl -X GET "http://localhost:5000/api/sync?statusJt=APPROVE" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Multiple status (comma-separated)
+curl -X GET "http://localhost:5000/api/sync?statusJt=APPROVE,GOLIVE,PENDING" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Contoh dengan JavaScript/Fetch:**
+```javascript
+// Single status
+const response = await fetch('/api/sync?statusJt=APPROVE', {
+  headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+});
+
+// Multiple status (comma-separated - lebih ringkas)
+const statuses = ['APPROVE', 'GOLIVE', 'PENDING'].join(',');
+const response = await fetch(`/api/sync?statusJt=${statuses}`, {
+  headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+});
+
+// Multiple status (repeat parameter)
+const params = new URLSearchParams();
+params.append('statusJt', 'APPROVE');
+params.append('statusJt', 'GOLIVE');
+params.append('statusJt', 'PENDING');
+
+const response = await fetch(`/api/sync?${params.toString()}`, {
+  headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+});
+```
+
 ## 🏗️ Project Structure
 
 ```

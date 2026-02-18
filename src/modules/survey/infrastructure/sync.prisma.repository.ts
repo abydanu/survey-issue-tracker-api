@@ -195,13 +195,34 @@ export class SyncPrismaRepository implements ISyncRepository {
       ];
     }
 
-    if (query.statusJt && query.statusJt.trim() && query.statusJt.trim().toLowerCase() !== 'all') {
-      where.statusJt = {
-        value: {
-          equals: query.statusJt.trim(),
-          mode: Prisma.QueryMode.insensitive
+    if (query.statusJt) {
+      // Handle both single string and array of strings
+      const statusJtValues = Array.isArray(query.statusJt) ? query.statusJt : [query.statusJt];
+      
+      // Filter out empty strings and 'all' values
+      const validStatusJt = statusJtValues
+        .map(s => s.trim())
+        .filter(s => s && s.toLowerCase() !== 'all');
+      
+      if (validStatusJt.length > 0) {
+        if (validStatusJt.length === 1) {
+          // Single value - use equals for better performance
+          where.statusJt = {
+            value: {
+              equals: validStatusJt[0],
+              mode: Prisma.QueryMode.insensitive
+            }
+          };
+        } else {
+          // Multiple values - use in operator
+          where.statusJt = {
+            value: {
+              in: validStatusJt,
+              mode: Prisma.QueryMode.insensitive
+            }
+          };
         }
-      };
+      }
     }
 
     if (query.rabHldMin !== undefined || query.rabHldMax !== undefined) {

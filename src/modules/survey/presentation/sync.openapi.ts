@@ -147,10 +147,10 @@ export const getSurveyRoute = createRoute({
         example: 'NCX123',
         description: 'Search by nomor NCX',
       }),
-      statusJt: z.string().optional().openapi({
+      statusJt: z.union([z.string(), z.array(z.string())]).optional().openapi({
         param: { name: 'statusJt', in: 'query' },
-        example: 'APPROVE',
-        description: 'Filter by Status JT',
+        example: 'APPROVE,GOLIVE,PENDING',
+        description: 'Filter by Status JT. Gunakan comma-separated untuk multiple values (contoh: APPROVE,GOLIVE,PENDING) atau repeat parameter (?statusJt=APPROVE&statusJt=GOLIVE)',
       }),
       rabHldMin: z.string().optional().openapi({
         param: { name: 'rabHldMin', in: 'query' },

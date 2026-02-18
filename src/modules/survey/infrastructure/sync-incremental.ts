@@ -72,6 +72,8 @@ export async function incrementalSyncFromSheets(
         select: { 
           idKendala: true,
           id: true,
+          newSc: true,
+          namaPelanggan: true,
         }
       }),
       prisma.ndeUsulanB2B.findMany({
@@ -84,10 +86,18 @@ export async function incrementalSyncFromSheets(
 
     const existingDetailIds = new Set(existingDetails.map((d: any) => d.idKendala));
     const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
+    
+    // Build lookup maps for faster resolution
+    const newScToIdKendala = new Map<string, string>();
+    const customerNameToIdKendala = new Map<string, string>();
+    for (const m of existingDetails) {
+      if (m.newSc) newScToIdKendala.set(String(m.newSc).trim(), m.idKendala);
+      if (m.namaPelanggan) customerNameToIdKendala.set(String(m.namaPelanggan).trim().toLowerCase(), m.idKendala);
+    }
 
     
     logger.info(`Processing ${detailData.length} detail records...`);
-      const BATCH_SIZE = 50; 
+      const BATCH_SIZE = 200; // Increased from 100
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
         const batch = detailData.slice(i, i + BATCH_SIZE);
@@ -124,27 +134,27 @@ export async function incrementalSyncFromSheets(
                     update: {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
-                      tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : null,
-                      umur: detail.umur !== undefined ? detail.umur : null,
-                      bln: detail.bln !== undefined ? detail.bln : null,
-                      jenisOrder: detail.jenisOrder !== undefined ? detail.jenisOrder : null,
-                      datel: detail.datel !== undefined ? detail.datel : null,
-                      sto: detail.sto !== undefined ? detail.sto : null,
-                      namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : null,
-                      latitude: detail.latitude !== undefined ? detail.latitude : null,
-                      longitude: detail.longitude !== undefined ? detail.longitude : null,
+                      tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : undefined,
+                      umur: detail.umur !== undefined ? detail.umur : undefined,
+                      bln: detail.bln !== undefined ? detail.bln : undefined,
+                      jenisOrder: detail.jenisOrder !== undefined ? detail.jenisOrder : undefined,
+                      datel: detail.datel !== undefined ? detail.datel : undefined,
+                      sto: detail.sto !== undefined ? detail.sto : undefined,
+                      namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : undefined,
+                      latitude: detail.latitude !== undefined ? detail.latitude : undefined,
+                      longitude: detail.longitude !== undefined ? detail.longitude : undefined,
                       ...enumFields,
-                      rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : null,
-                      ihldValue: detail.ihldValue !== undefined ? detail.ihldValue : null,
-                      statusIhld: detail.statusIhld !== undefined ? detail.statusIhld : null,
-                      idEprop: detail.idEprop !== undefined ? detail.idEprop : null,
-                      newSc: detail.newSc !== undefined ? detail.newSc : null,
-                      namaOdp: detail.namaOdp !== undefined ? detail.namaOdp : null,
-                      tglGolive: detail.tglGolive !== undefined ? detail.tglGolive : null,
-                      avai: detail.avai !== undefined ? detail.avai : null,
-                      used: detail.used !== undefined ? detail.used : null,
-                      isTotal: detail.isTotal !== undefined ? detail.isTotal : null,
-                      occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : null,
+                      rabHld: detail.rabHld !== null && detail.rabHld !== undefined ? new Prisma.Decimal(detail.rabHld.toString()) : undefined,
+                      ihldValue: detail.ihldValue !== undefined ? detail.ihldValue : undefined,
+                      statusIhld: detail.statusIhld !== undefined ? detail.statusIhld : undefined,
+                      idEprop: detail.idEprop !== undefined ? detail.idEprop : undefined,
+                      newSc: detail.newSc !== undefined ? detail.newSc : undefined,
+                      namaOdp: detail.namaOdp !== undefined ? detail.namaOdp : undefined,
+                      tglGolive: detail.tglGolive !== undefined ? detail.tglGolive : undefined,
+                      avai: detail.avai !== undefined ? detail.avai : undefined,
+                      used: detail.used !== undefined ? detail.used : undefined,
+                      isTotal: detail.isTotal !== undefined ? detail.isTotal : undefined,
+                      occPercentage: detail.occPercentage !== null && detail.occPercentage !== undefined ? new Prisma.Decimal(detail.occPercentage.toString()) : undefined,
                     },
                     create: {
                       idKendala: detail.idKendala.trim(),
@@ -186,7 +196,7 @@ export async function incrementalSyncFromSheets(
                 }
               }
             },
-            { maxWait: 5000, timeout: 15000 }
+            { maxWait: 15000, timeout: 60000 } // Further increased timeout for larger batches
           );
         } catch (batchError) {
           console.error(`Error processing detail batch:`, batchError);
@@ -207,22 +217,7 @@ export async function incrementalSyncFromSheets(
       ) as string[];
 
       if (rawSheetNomorValues.length > 0) {
-        const masters = await prisma.newBgesB2BOlo.findMany({
-          where: {
-            OR: [
-              { idKendala: { in: rawSheetNomorValues } },
-              { newSc: { in: rawSheetNomorValues } },
-            ],
-          },
-          select: { idKendala: true, newSc: true },
-        });
-
-        const newScToIdKendala = new Map<string, string>();
-        for (const m of masters) {
-          if (m.newSc) newScToIdKendala.set(String(m.newSc).trim(), m.idKendala);
-          newScToIdKendala.set(String(m.idKendala).trim(), m.idKendala);
-        }
-
+        // Use already built newScToIdKendala map instead of querying again
         const preResolvedSheetIds = new Set<string>();
         for (const raw of rawSheetNomorValues) {
           const resolved = newScToIdKendala.get(raw) ?? raw;
@@ -244,7 +239,7 @@ export async function incrementalSyncFromSheets(
 
     if (summaryData.length > 0) {
       logger.info(`Processing ${summaryData.length} summary records...`);
-      const BATCH_SIZE = 50; 
+      const BATCH_SIZE = 200; // Increased from 100
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
         const batch = summaryData.slice(i, i + BATCH_SIZE);
@@ -267,46 +262,31 @@ export async function incrementalSyncFromSheets(
                 }
 
                 try {
+                  // Use pre-fetched lookup maps instead of querying
+                  let existingMaster = null;
+                  let resolvedNcx = nomorNcx;
                   
-                  let existingMaster = await tx.newBgesB2BOlo.findUnique({
-                    where: { idKendala: nomorNcx },
-                    select: { idKendala: true, namaPelanggan: true, newSc: true }
-                  });
-
-                  
-                  if (!existingMaster) {
-                    existingMaster = await tx.newBgesB2BOlo.findFirst({
-                      where: { newSc: nomorNcx },
-                      select: { idKendala: true, namaPelanggan: true, newSc: true }
-                    });
-                    
-                    if (existingMaster) {
-                      nomorNcx = existingMaster.idKendala;
+                  // Check if exists in detail records
+                  if (existingDetailIds.has(nomorNcx)) {
+                    existingMaster = { idKendala: nomorNcx };
+                  } else if (newScToIdKendala.has(nomorNcx)) {
+                    // Check newSc mapping
+                    resolvedNcx = newScToIdKendala.get(nomorNcx)!;
+                    existingMaster = { idKendala: resolvedNcx };
+                  } else if (summary.namaPelanggan) {
+                    // Check customer name mapping
+                    const sheetNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim() ?? '';
+                    const isNumericNcx = /^\d+$/.test(sheetNomorNcx);
+                    if (!isNumericNcx) {
+                      const customerKey = summary.namaPelanggan.trim().toLowerCase();
+                      if (customerNameToIdKendala.has(customerKey)) {
+                        resolvedNcx = customerNameToIdKendala.get(customerKey)!;
+                        existingMaster = { idKendala: resolvedNcx };
+                      }
                     }
                   }
-
                   
-                  
-                  
-                  const sheetNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim() ?? '';
-                  const isNumericNcx = /^\d+$/.test(sheetNomorNcx);
-                  if (!existingMaster && summary.namaPelanggan && !isNumericNcx) {
-                    const customerName = summary.namaPelanggan.trim();
-                    
-                    existingMaster = await tx.newBgesB2BOlo.findFirst({
-                      where: {
-                        namaPelanggan: {
-                          equals: customerName,
-                          mode: 'insensitive'
-                        }
-                      },
-                      select: { idKendala: true, namaPelanggan: true, newSc: true }
-                    });
-                    
-                    if (existingMaster) {
-                      nomorNcx = existingMaster.idKendala;
-                    }
-                  }
+                  nomorNcx = resolvedNcx;
 
                   
                   sheetSummaryResolvedIds.add(nomorNcx);
@@ -344,27 +324,27 @@ export async function incrementalSyncFromSheets(
                     update: {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
-                      statusJtId: statusJtId ?? null,
-                      statusInstalasiId: statusInstalasiId ?? null,
-                      c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : null,
-                      alamatInstalasi: summary.alamatInstalasi ?? null,
-                      jenisLayanan: summary.jenisLayanan ?? null,
-                      nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : null,
-                      rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : null,
-                      nomorNde: summary.nomorNde ?? null,
-                      progressJt: summary.progressJt ?? null,
-                      namaOdp: summary.namaOdp ?? null,
-                      jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : null,
-                      keterangan: summary.keterangan ?? null,
-                      datel: summary.datel ?? null,
-                      sto: summary.sto ?? null,
-                      namaPelanggan: summary.namaPelanggan ?? null,
-                      latitude: summary.latitude ?? null,
-                      longitude: summary.longitude ?? null,
-                      ihldLopId: summary.ihldLopId ?? null,
-                      planTematik: summary.planTematik ?? null,
-                      rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                      statusUsulan: summary.statusUsulan ?? null,
+                      statusJtId: statusJtId !== null ? statusJtId : undefined,
+                      statusInstalasiId: statusInstalasiId !== null ? statusInstalasiId : undefined,
+                      c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : undefined,
+                      alamatInstalasi: summary.alamatInstalasi !== undefined ? summary.alamatInstalasi : undefined,
+                      jenisLayanan: summary.jenisLayanan !== undefined ? summary.jenisLayanan : undefined,
+                      nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : undefined,
+                      rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : undefined,
+                      nomorNde: summary.nomorNde !== undefined ? summary.nomorNde : undefined,
+                      progressJt: summary.progressJt !== undefined ? summary.progressJt : undefined,
+                      namaOdp: summary.namaOdp !== undefined ? summary.namaOdp : undefined,
+                      jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : undefined,
+                      keterangan: summary.keterangan !== undefined ? summary.keterangan : undefined,
+                      datel: summary.datel !== undefined ? summary.datel : undefined,
+                      sto: summary.sto !== undefined ? summary.sto : undefined,
+                      namaPelanggan: summary.namaPelanggan !== undefined ? summary.namaPelanggan : undefined,
+                      latitude: summary.latitude !== undefined ? summary.latitude : undefined,
+                      longitude: summary.longitude !== undefined ? summary.longitude : undefined,
+                      ihldLopId: summary.ihldLopId !== undefined ? summary.ihldLopId : undefined,
+                      planTematik: summary.planTematik !== undefined ? summary.planTematik : undefined,
+                      rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : undefined,
+                      statusUsulan: summary.statusUsulan !== undefined ? summary.statusUsulan : undefined,
                     },
                     create: {
                       no: no,
@@ -409,7 +389,7 @@ export async function incrementalSyncFromSheets(
                 }
               }
             },
-            { maxWait: 5000, timeout: 15000 }
+            { maxWait: 15000, timeout: 60000 } // Further increased timeout for larger batches
           );
         } catch (batchError) {
           console.error(`Error processing summary batch:`, batchError);

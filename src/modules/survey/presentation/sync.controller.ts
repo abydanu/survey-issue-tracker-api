@@ -33,11 +33,24 @@ export class SyncController {
       const datelParam = c.req.query('datel');
       const stoParam = c.req.query('sto');
 
+      // Parse statusJt - support both comma-separated and array format
+      let statusJtValues: string[] | undefined;
+      if (statusJtParam) {
+        // Check if it contains comma (comma-separated format)
+        if (statusJtParam.includes(',')) {
+          statusJtValues = statusJtParam.split(',').map(s => s.trim()).filter(s => s);
+        } else {
+          // Single value or check for multiple query params
+          const multipleParams = c.req.queries('statusJt');
+          statusJtValues = multipleParams && multipleParams.length > 0 ? multipleParams : [statusJtParam];
+        }
+      }
+
       const query: DashboardQuery = {
         page: pageParam ? Number(pageParam) : undefined,
         limit: limitParam ? Number(limitParam) : undefined,
         search: searchParam,
-        statusJt: statusJtParam,
+        statusJt: statusJtValues && statusJtValues.length > 0 ? statusJtValues : undefined,
         rabHldMin: rabHldMinParam ? Number(rabHldMinParam) : undefined,
         rabHldMax: rabHldMaxParam ? Number(rabHldMaxParam) : undefined,
         tahun: tahunParam,
