@@ -87,7 +87,7 @@ export async function incrementalSyncFromSheets(
     const existingDetailIds = new Set(existingDetails.map((d: any) => d.idKendala));
     const existingSummaryIds = new Set(existingSummaries.map((s: any) => s.nomorNcx));
     
-    // Build lookup maps for faster resolution
+    
     const newScToIdKendala = new Map<string, string>();
     const customerNameToIdKendala = new Map<string, string>();
     for (const m of existingDetails) {
@@ -97,7 +97,7 @@ export async function incrementalSyncFromSheets(
 
     
     logger.info(`Processing ${detailData.length} detail records...`);
-      const BATCH_SIZE = 200; // Increased from 100
+      const BATCH_SIZE = 200; 
 
       for (let i = 0; i < detailData.length; i += BATCH_SIZE) {
         const batch = detailData.slice(i, i + BATCH_SIZE);
@@ -196,7 +196,7 @@ export async function incrementalSyncFromSheets(
                 }
               }
             },
-            { maxWait: 15000, timeout: 60000 } // Further increased timeout for larger batches
+            { maxWait: 15000, timeout: 60000 } 
           );
         } catch (batchError) {
           console.error(`Error processing detail batch:`, batchError);
@@ -217,7 +217,7 @@ export async function incrementalSyncFromSheets(
       ) as string[];
 
       if (rawSheetNomorValues.length > 0) {
-        // Use already built newScToIdKendala map instead of querying again
+        
         const preResolvedSheetIds = new Set<string>();
         for (const raw of rawSheetNomorValues) {
           const resolved = newScToIdKendala.get(raw) ?? raw;
@@ -239,7 +239,7 @@ export async function incrementalSyncFromSheets(
 
     if (summaryData.length > 0) {
       logger.info(`Processing ${summaryData.length} summary records...`);
-      const BATCH_SIZE = 200; // Increased from 100
+      const BATCH_SIZE = 200; 
 
       for (let i = 0; i < summaryData.length; i += BATCH_SIZE) {
         const batch = summaryData.slice(i, i + BATCH_SIZE);
@@ -262,19 +262,19 @@ export async function incrementalSyncFromSheets(
                 }
 
                 try {
-                  // Use pre-fetched lookup maps instead of querying
+                  
                   let existingMaster = null;
                   let resolvedNcx = nomorNcx;
                   
-                  // Check if exists in detail records
+                  
                   if (existingDetailIds.has(nomorNcx)) {
                     existingMaster = { idKendala: nomorNcx };
                   } else if (newScToIdKendala.has(nomorNcx)) {
-                    // Check newSc mapping
+                    
                     resolvedNcx = newScToIdKendala.get(nomorNcx)!;
                     existingMaster = { idKendala: resolvedNcx };
                   } else if (summary.namaPelanggan) {
-                    // Check customer name mapping
+                    
                     const sheetNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim() ?? '';
                     const isNumericNcx = /^\d+$/.test(sheetNomorNcx);
                     if (!isNumericNcx) {
@@ -389,7 +389,7 @@ export async function incrementalSyncFromSheets(
                 }
               }
             },
-            { maxWait: 15000, timeout: 60000 } // Further increased timeout for larger batches
+            { maxWait: 15000, timeout: 60000 } 
           );
         } catch (batchError) {
           console.error(`Error processing summary batch:`, batchError);
@@ -401,7 +401,11 @@ export async function incrementalSyncFromSheets(
     
     const sheetDetailIds = new Set(detailData.map((d: any) => d.idKendala?.trim()).filter(Boolean));
     
-    const detailsToDelete = existingDetails.filter((d: any) => !sheetDetailIds.has(d.idKendala));
+    
+    
+    const detailsToDelete = existingDetails.filter((d: any) => 
+      !sheetDetailIds.has(d.idKendala) && !sheetSummaryResolvedIds.has(d.idKendala)
+    );
     const summariesToDelete = existingSummaries.filter((s: any) => !sheetSummaryResolvedIds.has(s.nomorNcx));
     
     if (summariesToDelete.length > 0 || detailsToDelete.length > 0) {
@@ -420,6 +424,19 @@ export async function incrementalSyncFromSheets(
         
         if (detailsToDelete.length > 0) {
           const detailIds = detailsToDelete.map((d: any) => d.idKendala);
+          
+          
+          
+          const orphanedSummaries = await prisma.ndeUsulanB2B.deleteMany({
+            where: { nomorNcx: { in: detailIds } }
+          });
+          
+          if (orphanedSummaries.count > 0) {
+            logger.info(`Deleted ${orphanedSummaries.count} orphaned summary records`);
+            stats.deleted += orphanedSummaries.count;
+          }
+          
+          
           const deleteResult = await prisma.newBgesB2BOlo.deleteMany({
             where: { idKendala: { in: detailIds } }
           });

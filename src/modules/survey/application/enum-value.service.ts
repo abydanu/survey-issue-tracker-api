@@ -88,7 +88,7 @@ export class EnumValueService {
       const newEnums: Array<{ enumType: EnumType; value: string; displayName: string }> = [];
       const deactivatedEnums: Array<{ enumType: EnumType; value: string; displayName: string }> = [];
 
-      // Fetch all existing enums at once instead of one by one
+      
       const allExistingEnums = await prisma.enumValue.findMany({
         where: {
           enumType: {
@@ -97,14 +97,14 @@ export class EnumValueService {
         }
       });
 
-      // Build lookup map for O(1) access
+      
       const existingEnumsMap = new Map<string, typeof allExistingEnums[0]>();
       for (const enumValue of allExistingEnums) {
         const key = `${enumValue.enumType}:${enumValue.value}`;
         existingEnumsMap.set(key, enumValue);
       }
 
-      // Collect all creates and updates
+      
       const toCreate: Array<{ enumType: string; value: string; displayName: string }> = [];
       const toUpdate: Array<{ id: string; displayName: string; isActive: boolean }> = [];
 
@@ -131,7 +131,7 @@ export class EnumValueService {
         }
       }
 
-      // Batch create all new enums
+      
       if (toCreate.length > 0) {
         await prisma.enumValue.createMany({
           data: toCreate.map(e => ({
@@ -145,7 +145,7 @@ export class EnumValueService {
         logger.info(`Created ${toCreate.length} new enums`);
       }
 
-      // Batch update reactivated enums
+      
       if (toUpdate.length > 0) {
         await Promise.all(
           toUpdate.map(u =>
@@ -157,7 +157,7 @@ export class EnumValueService {
         );
       }
 
-      // Deactivate enums not in sheet
+      
       const allEnumTypes: EnumType[] = ["StatusJt", "StatusInstalasi", "JenisKendala", "PlanTematik", "StatusUsulan", "Keterangan"];
 
       for (const enumType of allEnumTypes) {
@@ -166,7 +166,7 @@ export class EnumValueService {
 
         const sheetValueSet = new Set(sheetValues.keys());
 
-        // Find active enums in DB that are not in sheet
+        
         const toDeactivate = allExistingEnums.filter(
           e => e.enumType === enumType && e.isActive && !sheetValueSet.has(e.value)
         );
@@ -358,13 +358,13 @@ export class EnumValueService {
   private async collectSheetEnumValuesWithDisplayNames(): Promise<Map<EnumType, Map<string, string>>> {
     const result = new Map<EnumType, Map<string, string>>();
 
-    // Initialize all enum types
+    
     const allEnumTypes: EnumType[] = ["StatusJt", "StatusInstalasi", "JenisKendala", "PlanTematik", "StatusUsulan", "Keterangan"];
     for (const enumType of allEnumTypes) {
       result.set(enumType, new Map<string, string>());
     }
 
-    // Read data validation in parallel instead of sequentially
+    
     logger.info("Reading enum values from data validation rules...");
     try {
       const [
@@ -383,7 +383,7 @@ export class EnumValueService {
         this.googleSheets.readDataValidationValues('NEW BGES B2B & OLO', 'T'),
       ]);
 
-      // Process StatusJt
+      
       for (const value of statusJtValidation) {
         const normalized = await this.normalizeEnumValue(value);
         if (normalized) {
@@ -392,7 +392,7 @@ export class EnumValueService {
       }
       logger.info(`Found ${statusJtValidation.length} StatusJt values from data validation`);
 
-      // Process StatusInstalasi
+      
       for (const value of statusInstalasiValidation) {
         const normalized = await this.normalizeStatusInstalasi(value);
         if (normalized) {
@@ -401,7 +401,7 @@ export class EnumValueService {
       }
       logger.info(`Found ${statusInstalasiValidation.length} StatusInstalasi values from data validation`);
 
-      // Process JenisKendala
+      
       for (const value of jenisKendalaValidation) {
         const normalized = await this.normalizeEnumValue(value);
         if (normalized) {
@@ -410,7 +410,7 @@ export class EnumValueService {
       }
       logger.info(`Found ${jenisKendalaValidation.length} JenisKendala values from data validation`);
 
-      // Process PlanTematik
+      
       for (const value of planTematikValidation) {
         const normalized = await this.normalizeEnumValue(value);
         if (normalized) {
@@ -419,7 +419,7 @@ export class EnumValueService {
       }
       logger.info(`Found ${planTematikValidation.length} PlanTematik values from data validation`);
 
-      // Process StatusUsulan
+      
       for (const value of statusUsulanValidation) {
         const normalized = await this.normalizeEnumValue(value);
         if (normalized) {
@@ -428,7 +428,7 @@ export class EnumValueService {
       }
       logger.info(`Found ${statusUsulanValidation.length} StatusUsulan values from data validation`);
 
-      // Process Keterangan
+      
       for (const value of keteranganValidation) {
         const normalized = await this.normalizeEnumValue(value);
         if (normalized) {
@@ -439,7 +439,7 @@ export class EnumValueService {
     } catch (error: any) {
       logger.warn(`Failed to read data validation: ${error.message}, falling back to data-only sync`);
       
-      // Fallback: read from actual data
+      
       const summaryRows = await this.googleSheets.readRawSummaryRows();
       const detailRows = await this.googleSheets.readRawDetailRows();
 

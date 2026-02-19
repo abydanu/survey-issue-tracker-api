@@ -196,17 +196,17 @@ export class SyncPrismaRepository implements ISyncRepository {
     }
 
     if (query.statusJt) {
-      // Handle both single string and array of strings
+      
       const statusJtValues = Array.isArray(query.statusJt) ? query.statusJt : [query.statusJt];
       
-      // Filter out empty strings and 'all' values
+      
       const validStatusJt = statusJtValues
         .map(s => s.trim())
         .filter(s => s && s.toLowerCase() !== 'all');
       
       if (validStatusJt.length > 0) {
         if (validStatusJt.length === 1) {
-          // Single value - use equals for better performance
+          
           where.statusJt = {
             value: {
               equals: validStatusJt[0],
@@ -214,7 +214,7 @@ export class SyncPrismaRepository implements ISyncRepository {
             }
           };
         } else {
-          // Multiple values - use in operator
+          
           where.statusJt = {
             value: {
               in: validStatusJt,
