@@ -225,6 +225,32 @@ export class SyncPrismaRepository implements ISyncRepository {
       }
     }
 
+    // Filter by statusUsulan (actually filters statusJt field)
+    if (query.statusUsulan) {
+      const statusUsulanValues = Array.isArray(query.statusUsulan) ? query.statusUsulan : [query.statusUsulan];
+      const validStatusUsulan = statusUsulanValues.map(s => s.trim()).filter(s => s && s.toLowerCase() !== 'all');
+      
+      if (validStatusUsulan.length > 0) {
+        where.statusJt = {
+          value: validStatusUsulan.length === 1 
+            ? { equals: validStatusUsulan[0], mode: Prisma.QueryMode.insensitive }
+            : { in: validStatusUsulan, mode: Prisma.QueryMode.insensitive }
+        };
+      }
+    }
+
+    // Filter by statusUsulan NOT IN (actually filters statusJt field)
+    if (query.statusUsulanNot) {
+      const statusUsulanNotValues = Array.isArray(query.statusUsulanNot) ? query.statusUsulanNot : [query.statusUsulanNot];
+      const validStatusUsulanNot = statusUsulanNotValues.map(s => s.trim()).filter(s => s);
+      
+      if (validStatusUsulanNot.length > 0) {
+        where.statusJt = {
+          value: { notIn: validStatusUsulanNot, mode: Prisma.QueryMode.insensitive }
+        };
+      }
+    }
+
     if (query.rabHldMin !== undefined || query.rabHldMax !== undefined) {
       const rabHldFilter: any = {};
 
@@ -242,14 +268,69 @@ export class SyncPrismaRepository implements ISyncRepository {
       };
     }
 
-    if (query.tahun && query.tahun.trim()) {
+    // Filter by hariTerakhir (last N days)
+    if (query.hariTerakhir) {
+      const daysAgo = new Date();
+      daysAgo.setDate(daysAgo.getDate() - query.hariTerakhir);
+      daysAgo.setHours(0, 0, 0, 0);
+
       where.masterData = {
         ...(where.masterData as Prisma.NewBgesB2BOloWhereInput),
-        tglInputUsulan: {
-          gte: new Date(Number(query.tahun.trim()), 0, 1),
-          lte: new Date(Number(query.tahun.trim()) + 1, 0, 1),
-        },
+        tglInputUsulan: { gte: daysAgo },
       };
+    }
+    // Filter by dateRange [startDate, endDate]
+    else if (query.dateRange) {
+      const [startDate, endDate] = query.dateRange;
+      
+      if (startDate || endDate) {
+        const dateFilter: any = {};
+        
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          dateFilter.gte = start;
+        }
+        
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          dateFilter.lte = end;
+        }
+        
+        where.masterData = {
+          ...(where.masterData as Prisma.NewBgesB2BOloWhereInput),
+          tglInputUsulan: dateFilter,
+        };
+      }
+    }
+    // Filter by tahun and bulan
+    else if (query.tahun) {
+      const year = query.tahun;
+      
+      if (query.bulan) {
+        const monthStart = new Date(year, query.bulan - 1, 1);
+        const monthEnd = new Date(year, query.bulan, 1);
+
+        where.masterData = {
+          ...(where.masterData as Prisma.NewBgesB2BOloWhereInput),
+          OR: [
+            { tglInputUsulan: { gte: monthStart, lt: monthEnd } },
+            { bln: { contains: `${year}-${String(query.bulan).padStart(2, '0')}`, mode: Prisma.QueryMode.insensitive } }
+          ]
+        };
+      } else {
+        const yearStart = new Date(year, 0, 1);
+        const yearEnd = new Date(year + 1, 0, 1);
+
+        where.masterData = {
+          ...(where.masterData as Prisma.NewBgesB2BOloWhereInput),
+          OR: [
+            { tglInputUsulan: { gte: yearStart, lt: yearEnd } },
+            { bln: { startsWith: String(year), mode: Prisma.QueryMode.insensitive } }
+          ]
+        };
+      }
     }
 
     if (query.datel && query.datel.trim()) {

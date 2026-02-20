@@ -190,6 +190,7 @@ export class GoogleSheetsService {
       let skippedEmptyRow = 0;
       let skippedNoNomorNcx = 0;
       let skippedShortRow = 0;
+      let skippedEmptyNo = 0;
 
       for (const [index, row] of dataRows.entries()) {
         if (!Array.isArray(row) || row.length === 0) {
@@ -201,11 +202,26 @@ export class GoogleSheetsService {
           row.length >= 4
         ) {
           const nomorNcxCell = String(row[3] ?? "").trim();
+          const noCell = String(row[0] ?? "").trim();
+          
+         
+          if (!noCell || !noCell.replace(/[^0-9]/g, "")) {
+            skippedEmptyNo++;
+            continue;
+          }
+          
           if (nomorNcxCell !== "") {
             
             const rowNumber =
               headerIdx >= 0 ? headerIdx + 1 + (index + 1) : 2 + (index + 1);
-            results.push(await this.mapRowToSummary(row, rowNumber));
+            const mapped = await this.mapRowToSummary(row, rowNumber);
+            
+           
+            if (mapped.no && mapped.no.trim()) {
+              results.push(mapped);
+            } else {
+              skippedEmptyNo++;
+            }
           } else {
             skippedNoNomorNcx++;
           }
@@ -223,9 +239,11 @@ export class GoogleSheetsService {
           skippedEmptyRow,
           skippedShortRow,
           skippedNoNomorNcx,
+          skippedEmptyNo,
         },
         "Read summary data completed"
       );
+      
       return results;
     } catch (error: any) {
       logger.error({
@@ -448,9 +466,6 @@ export class GoogleSheetsService {
         results.push(await this.mapRowToDetail(row, rowNumber));
       }
 
-      console.log(`[DEBUG] Detail records processed: ${results.length}, skipped: ${skippedCount}`);
-      console.log(`[DEBUG] Skip reasons:`, skipReasons);
-
       return results;
     } catch (error: any) {
       logger.error({
@@ -634,10 +649,15 @@ export class GoogleSheetsService {
 
   private normalizeNo(input: unknown, fallbackRowNumber: number): string {
     const raw = String(input ?? "").trim();
-    if (!raw) return String(fallbackRowNumber).padStart(4, "0");
+    
+   
+    if (!raw) return "";
 
     const digits = raw.replace(/[^0-9]/g, "");
-    if (!digits) return String(fallbackRowNumber).padStart(4, "0");
+    
+   
+    if (!digits) return "";
+    
     return digits.padStart(4, "0");
   }
 

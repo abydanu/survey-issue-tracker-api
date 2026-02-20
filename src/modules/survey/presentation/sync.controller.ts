@@ -27,13 +27,29 @@ export class SyncController {
       const limitParam = c.req.query('limit');
       const searchParam = c.req.query('search');
       const statusJtParam = c.req.query('statusJt');
+      const statusUsulanParam = c.req.query('statusUsulan');
+      const statusUsulanNotParam = c.req.query('statusUsulanNot');
       const rabHldMinParam = c.req.query('rabHldMin');
       const rabHldMaxParam = c.req.query('rabHldMax');
       const tahunParam = c.req.query('tahun');
+      const bulanParam = c.req.query('bulan');
+      const hariTerakhirParam = c.req.query('hariTerakhir');
+      const dateRangeParam = c.req.query('dateRange');
       const datelParam = c.req.query('datel');
       const stoParam = c.req.query('sto');
 
-      
+      let dateRange: [Date | null, Date | null] | undefined;
+      if (dateRangeParam) {
+        try {
+          const dates = dateRangeParam.split(',').map(d => d.trim());
+          const startDate = dates[0] ? new Date(dates[0]) : null;
+          const endDate = dates[1] ? new Date(dates[1]) : null;
+          dateRange = [startDate, endDate];
+        } catch (error) {
+          logger.warn({dateRangeParam}, 'Invalid dateRange format:');
+        }
+      }
+
       let statusJtValues: string[] | undefined;
       if (statusJtParam) {
         
@@ -46,14 +62,41 @@ export class SyncController {
         }
       }
 
+      // Parse statusUsulan (single or multiple)
+      let statusUsulanValues: string[] | undefined;
+      if (statusUsulanParam) {
+        if (statusUsulanParam.includes(',')) {
+          statusUsulanValues = statusUsulanParam.split(',').map(s => s.trim()).filter(s => s);
+        } else {
+          const multipleParams = c.req.queries('statusUsulan');
+          statusUsulanValues = multipleParams && multipleParams.length > 0 ? multipleParams : [statusUsulanParam];
+        }
+      }
+
+      // Parse statusUsulanNot (single or multiple)
+      let statusUsulanNotValues: string[] | undefined;
+      if (statusUsulanNotParam) {
+        if (statusUsulanNotParam.includes(',')) {
+          statusUsulanNotValues = statusUsulanNotParam.split(',').map(s => s.trim()).filter(s => s);
+        } else {
+          const multipleParams = c.req.queries('statusUsulanNot');
+          statusUsulanNotValues = multipleParams && multipleParams.length > 0 ? multipleParams : [statusUsulanNotParam];
+        }
+      }
+
       const query: DashboardQuery = {
         page: pageParam ? Number(pageParam) : undefined,
         limit: limitParam ? Number(limitParam) : undefined,
         search: searchParam,
         statusJt: statusJtValues && statusJtValues.length > 0 ? statusJtValues : undefined,
+        statusUsulan: statusUsulanValues && statusUsulanValues.length > 0 ? statusUsulanValues : undefined,
+        statusUsulanNot: statusUsulanNotValues && statusUsulanNotValues.length > 0 ? statusUsulanNotValues : undefined,
         rabHldMin: rabHldMinParam ? Number(rabHldMinParam) : undefined,
         rabHldMax: rabHldMaxParam ? Number(rabHldMaxParam) : undefined,
-        tahun: tahunParam,
+        tahun: tahunParam ? Number(tahunParam) : undefined,
+        bulan: bulanParam ? Number(bulanParam) : undefined,
+        hariTerakhir: hariTerakhirParam ? Number(hariTerakhirParam) : undefined,
+        dateRange,
         datel: datelParam,
         sto: stoParam,
       };

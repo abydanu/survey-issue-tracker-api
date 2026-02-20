@@ -137,7 +137,7 @@ export async function incrementalSyncFromSheets(
                       tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : undefined,
                       umur: detail.umur !== undefined ? detail.umur : undefined,
                       bln: detail.bln !== undefined ? detail.bln : undefined,
-                      jenisOrder: detail.jenisOrder !== undefined ? detail.jenisOrder : undefined,
+                      jenisOrder: detail.jenisOrder, // Always update, even if null
                       datel: detail.datel !== undefined ? detail.datel : undefined,
                       sto: detail.sto !== undefined ? detail.sto : undefined,
                       namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : undefined,
@@ -262,7 +262,6 @@ export async function incrementalSyncFromSheets(
                 }
 
                 try {
-                  
                   let existingMaster = null;
                   let resolvedNcx = nomorNcx;
                   
@@ -290,30 +289,87 @@ export async function incrementalSyncFromSheets(
 
                   
                   sheetSummaryResolvedIds.add(nomorNcx);
+                  
+                  // If nomorNcx was resolved to a different value, check if summary already exists
+                  const originalNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim();
+                  if (resolvedNcx !== originalNomorNcx) {
+                    const existingSummary = await tx.ndeUsulanB2B.findUnique({
+                      where: { nomorNcx: resolvedNcx }
+                    });
+                    
+                    if (existingSummary) {
+                      // Summary already exists with resolved nomorNcx, just update it
+                      stats.updated++;
+                      
+                      const statusJtId = summary.statusJt ? enumCache.get(`StatusJt:${summary.statusJt}`) : null;
+                      const statusInstalasiId = summary.statusInstalasi ? enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`) : null;
+                      
+                      await tx.ndeUsulanB2B.update({
+                        where: { nomorNcx: resolvedNcx },
+                        data: {
+                          syncStatus: 'SYNCED',
+                          lastSyncAt: new Date(),
+                          statusJtId: statusJtId !== null ? statusJtId : undefined,
+                          statusInstalasiId: statusInstalasiId !== null ? statusInstalasiId : undefined,
+                          c2r: summary.c2r !== null && summary.c2r !== undefined ? new Prisma.Decimal(summary.c2r.toString()) : undefined,
+                          alamatInstalasi: summary.alamatInstalasi !== undefined ? summary.alamatInstalasi : undefined,
+                          jenisLayanan: summary.jenisLayanan !== undefined ? summary.jenisLayanan : undefined,
+                          nilaiKontrak: summary.nilaiKontrak !== null && summary.nilaiKontrak !== undefined ? new Prisma.Decimal(summary.nilaiKontrak.toString()) : undefined,
+                          rabSurvey: summary.rabSurvey !== null && summary.rabSurvey !== undefined ? new Prisma.Decimal(summary.rabSurvey.toString()) : undefined,
+                          nomorNde: summary.nomorNde !== undefined ? summary.nomorNde : undefined,
+                          progressJt: summary.progressJt !== undefined ? summary.progressJt : undefined,
+                          namaOdp: summary.namaOdp !== undefined ? summary.namaOdp : undefined,
+                          jarakOdp: summary.jarakOdp !== null && summary.jarakOdp !== undefined ? new Prisma.Decimal(summary.jarakOdp.toString()) : undefined,
+                          keterangan: summary.keterangan !== undefined ? summary.keterangan : undefined,
+                          datel: summary.datel !== undefined ? summary.datel : undefined,
+                          sto: summary.sto !== undefined ? summary.sto : undefined,
+                          namaPelanggan: summary.namaPelanggan !== undefined ? summary.namaPelanggan : undefined,
+                          latitude: summary.latitude !== undefined ? summary.latitude : undefined,
+                          longitude: summary.longitude !== undefined ? summary.longitude : undefined,
+                          ihldLopId: summary.ihldLopId !== undefined ? summary.ihldLopId : undefined,
+                          planTematik: summary.planTematik !== undefined ? summary.planTematik : undefined,
+                          rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : undefined,
+                          statusUsulan: summary.statusUsulan !== undefined ? summary.statusUsulan : undefined,
+                        }
+                      });
+                      continue;
+                    }
+                  }
 
                   if (!existingMaster) {
-                    const masterEnumFields: any = {};
-                    
-                    const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
-                    if (planTematikId) masterEnumFields.planTematik = { connect: { id: planTematikId } };
-                    
-                    const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
-                    if (statusUsulanId) masterEnumFields.statusUsulan = { connect: { id: statusUsulanId } };
-
-                    await tx.newBgesB2BOlo.create({
-                      data: {
-                        idKendala: nomorNcx,
-                        syncStatus: 'SYNCED',
-                        lastSyncAt: new Date(),
-                        datel: summary.datel ?? null,
-                        sto: summary.sto ?? null,
-                        namaPelanggan: summary.namaPelanggan ?? null,
-                        latitude: summary.latitude ?? null,
-                        longitude: summary.longitude ?? null,
-                        ...masterEnumFields,
-                        rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
-                      }
+                    // Double check if master data exists in database
+                    const masterInDb = await tx.newBgesB2BOlo.findUnique({
+                      where: { idKendala: nomorNcx }
                     });
+                    
+                    if (masterInDb) {
+                      // Master already exists, skip creation
+                      existingMaster = masterInDb;
+                    } else {
+                      // Create new master data
+                      const masterEnumFields: any = {};
+                      
+                      const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
+                      if (planTematikId) masterEnumFields.planTematik = { connect: { id: planTematikId } };
+                      
+                      const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
+                      if (statusUsulanId) masterEnumFields.statusUsulan = { connect: { id: statusUsulanId } };
+
+                      await tx.newBgesB2BOlo.create({
+                        data: {
+                          idKendala: nomorNcx,
+                          syncStatus: 'SYNCED',
+                          lastSyncAt: new Date(),
+                          datel: summary.datel ?? null,
+                          sto: summary.sto ?? null,
+                          namaPelanggan: summary.namaPelanggan ?? null,
+                          latitude: summary.latitude ?? null,
+                          longitude: summary.longitude ?? null,
+                          ...masterEnumFields,
+                          rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
+                        }
+                      });
+                    }
                   }
 
                   const statusJtId = summary.statusJt ? enumCache.get(`StatusJt:${summary.statusJt}`) : null;
@@ -381,10 +437,22 @@ export async function incrementalSyncFromSheets(
                     stats.created++;
                   }
                 } catch (error: any) {
-                  logger.error(`Error upserting summary ${nomorNcx} (no: ${no}):`, error.message);
+                  const errorDetails = {
+                    nomorNcx,
+                    no,
+                    code: error.code,
+                    message: error.message,
+                    meta: error.meta
+                  };
+                  logger.error(JSON.stringify(errorDetails, null, 2));
+                  
                   if (error.code === 'P2002') {
-                    logger.error(`Duplicate 'no' detected: ${no}. This summary will be skipped.`);
+                    const target = error.meta?.target;
+                    logger.error(`Duplicate constraint violation on: ${target}`);
+                  } else if (error.code === 'P2003') {
+                    logger.error(`Foreign key constraint failed: ${error.meta?.field_name}`);
                   }
+                  
                   stats.errors++;
                 }
               }
@@ -398,6 +466,45 @@ export async function incrementalSyncFromSheets(
       }
     }
 
+    // Fix jenisOrder for masters created from summary by matching with detail via newSc
+    logger.info('Fixing jenisOrder for masters created from summary...');
+    const mastersWithoutJenisOrder = await prisma.newBgesB2BOlo.findMany({
+      where: {
+        OR: [
+          { jenisOrder: null },
+          { jenisOrder: '' }
+        ]
+      },
+      select: { idKendala: true }
+    });
+    
+    if (mastersWithoutJenisOrder.length > 0) {
+      logger.info(`Found ${mastersWithoutJenisOrder.length} masters without jenisOrder, attempting to fix...`);
+      
+      let fixed = 0;
+      for (const master of mastersWithoutJenisOrder) {
+        // Find detail where newSc matches this master's idKendala
+        const matchingDetail = await prisma.newBgesB2BOlo.findFirst({
+          where: {
+            newSc: master.idKendala,
+            jenisOrder: { not: null }
+          },
+          select: { jenisOrder: true }
+        });
+        
+        if (matchingDetail && matchingDetail.jenisOrder) {
+          await prisma.newBgesB2BOlo.update({
+            where: { idKendala: master.idKendala },
+            data: { jenisOrder: matchingDetail.jenisOrder }
+          });
+          fixed++;
+        }
+      }
+      
+      if (fixed > 0) {
+        logger.info(`Fixed ${fixed} masters with jenisOrder from matching details`);
+      }
+    }
     
     const sheetDetailIds = new Set(detailData.map((d: any) => d.idKendala?.trim()).filter(Boolean));
     

@@ -72,7 +72,7 @@ export class EnumService {
         'SURVEY',
         'INSTALASI',
         'DONE_INSTALASI',
-        'GO_LIVE',
+        'GOLIVE',
         'CANCEL',
         'PENDING',
         'KENDALA',

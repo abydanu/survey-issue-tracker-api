@@ -11,6 +11,7 @@ import type {
 import logger from "../../../infrastructure/logging/logger.js";
 import prisma from "../../../infrastructure/database/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
+import { tr } from "@faker-js/faker";
 
 export class DashboardService {
   constructor(private syncRepo: ISyncRepository) {}
@@ -76,6 +77,9 @@ export class ChartService {
         },
         createdAt: true,
       },
+      orderBy: {
+        no: 'asc'
+      }
     });
 
     const periodCounts = new Map<string, number>();
@@ -301,15 +305,6 @@ export class StatsService {
             value: true,
           },
         },
-        masterData: {
-          select: {
-            statusUsulan: {
-              select: {
-                value: true,
-              },
-            },
-          },
-        },
       },
     });
 
@@ -319,13 +314,13 @@ export class StatsService {
     let totalApproved = 0;
 
     for (const s of surveys) {
-      const statusUsulan = s.masterData?.statusUsulan?.value;
       const statusJt = s.statusJt?.value;
 
       if (
-        statusUsulan &&
-        statusUsulan !== "APPROVED" &&
-        statusUsulan !== "CANCEL"
+        statusJt &&
+        statusJt !== "APPROVE" &&
+        statusJt !== "CANCEL_PELANGGAN" && 
+        statusJt !== "GOLIVE"
       ) {
         totalPending++;
       }
@@ -334,7 +329,7 @@ export class StatsService {
         totalGoLive++;
       }
 
-      if (statusUsulan === "APPROVED") {
+      if (statusJt === "APPROVE") {
         totalApproved++;
       }
     }
@@ -349,7 +344,32 @@ export class StatsService {
       totalPending,
       totalGoLive,
       approvalRate,
+      filters: {
+        totalSurvey: this.buildFilterParams(filter),
+        totalPending: this.buildFilterParams(filter, 'pending'),
+        totalGoLive: this.buildFilterParams(filter, 'golive'),
+        totalApproved: this.buildFilterParams(filter, 'approved'),
+        approvalRate: this.buildFilterParams(filter, 'approved'), 
+      }
     };
+  }
+
+  private buildFilterParams(filter?: ChartFilter, type?: 'pending' | 'golive' | 'approved'): Record<string, any> {
+    const params: Record<string, any> = {};
+    
+    if (filter?.tahun) params.tahun = filter.tahun;
+    if (filter?.bulan) params.bulan = filter.bulan;
+    if (filter?.hariTerakhir) params.hariTerakhir = filter.hariTerakhir;
+    
+    if (type === 'pending') {
+      params.statusUsulanNot = ['APPROVE', 'CANCEL_PELANGGAN'];
+    } else if (type === 'golive') {
+      params.statusJt = 'GOLIVE';
+    } else if (type === 'approved') {
+      params.statusUsulan = 'APPROVE';
+    }
+    
+    return params;
   }
 
   private buildPeriodWhere(

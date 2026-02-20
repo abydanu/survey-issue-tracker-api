@@ -145,12 +145,22 @@ export const getSurveyRoute = createRoute({
       search: z.string().optional().openapi({
         param: { name: 'search', in: 'query' },
         example: 'NCX123',
-        description: 'Search by nomor NCX',
+        description: 'Search by nomor NCX, nama pelanggan, ID kendala, atau new SC',
       }),
       statusJt: z.union([z.string(), z.array(z.string())]).optional().openapi({
         param: { name: 'statusJt', in: 'query' },
-        example: 'APPROVE,GOLIVE,PENDING',
-        description: 'Filter by Status JT. Gunakan comma-separated untuk multiple values (contoh: APPROVE,GOLIVE,PENDING) atau repeat parameter (?statusJt=APPROVE&statusJt=GOLIVE)',
+        example: 'GOLIVE',
+        description: 'Filter by Status JT. Gunakan comma-separated untuk multiple values (contoh: APPROVE,GOLIVE) atau repeat parameter (?statusJt=APPROVE&statusJt=GOLIVE)',
+      }),
+      statusUsulan: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        param: { name: 'statusUsulan', in: 'query' },
+        example: 'APPROVE',
+        description: 'Filter by Status Usulan. Gunakan comma-separated untuk multiple values atau repeat parameter',
+      }),
+      statusUsulanNot: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        param: { name: 'statusUsulanNot', in: 'query' },
+        example: 'APPROVE,CANCEL_PELANGGAN,GOLIVE',
+        description: 'Exclude Status Usulan (untuk pending). Gunakan comma-separated untuk multiple values',
       }),
       rabHldMin: z.string().optional().openapi({
         param: { name: 'rabHldMin', in: 'query' },
@@ -159,22 +169,27 @@ export const getSurveyRoute = createRoute({
       }),
       rabHldMax: z.string().optional().openapi({
         param: { name: 'rabHldMax', in: 'query' },
-        example: '1000000',
+        example: '5000000',
         description: 'Filter by RAB HLD maximum',
       }),
-      tahun: z.string().optional().openapi({
-        param: { name: 'tahun', in: 'query' },
-        example: '2024',
-        description: 'Filter by tahun',
+      hariTerakhir: z.string().optional().openapi({
+        param: { name: 'hariTerakhir', in: 'query' },
+        example: '7',
+        description: 'Filter by last N days (e.g., 7, 30, 90)',
+      }),
+      dateRange: z.string().optional().openapi({
+        param: { name: 'dateRange', in: 'query' },
+        example: '2026-01-01,2026-02-28',
+        description: 'Filter by date range. Format: startDate,endDate (YYYY-MM-DD,YYYY-MM-DD). Either date can be empty for open-ended range.',
       }),
       datel: z.string().optional().openapi({
         param: { name: 'datel', in: 'query' },
-        example: 'DATEL001',
+        example: 'BOJONEGORO',
         description: 'Filter by datel',
       }),
       sto: z.string().optional().openapi({
         param: { name: 'sto', in: 'query' },
-        example: 'STO001',
+        example: 'BJN',
         description: 'Filter by STO',
       }),
     }),

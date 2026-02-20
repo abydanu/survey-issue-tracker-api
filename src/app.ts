@@ -26,7 +26,7 @@ export const createApp = () => {
 
   app.use('*', cors({
     origin: (origin) => {
-      const allowed = ['https://madpro.vercel.app', 'https://survey-issue-tracker-api-production.up.railway.app'];
+      const allowed = ['http://localhost:3000', 'https://madpro.vercel.app', 'https://survey-issue-tracker-api-production.up.railway.app'];
       if (!origin) return allowed[0];
       if (allowed.includes(origin)) return origin;
       if (origin.endsWith('.vercel.app')) return origin;

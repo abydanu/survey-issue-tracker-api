@@ -125,9 +125,14 @@ export interface DashboardQuery {
   limit?: number;
   search?: string;
   statusJt?: string | string[];
+  statusUsulan?: string | string[];
+  statusUsulanNot?: string | string[];
   rabHldMin?: number;
   rabHldMax?: number;
-  tahun?: string;
+  tahun?: number;
+  bulan?: number;
+  hariTerakhir?: number;
+  dateRange?: [Date | null, Date | null];
   datel?: string;
   sto?: string;
 }
@@ -136,7 +141,14 @@ export interface StatsData {
   totalSurvey: number;
   totalPending: number;
   totalGoLive: number;
-  approvalRate: number; 
+  approvalRate: number;
+  filters: {
+    totalSurvey: Record<string, any>;
+    totalPending: Record<string, any>;
+    totalGoLive: Record<string, any>;
+    totalApproved: Record<string, any>;
+    approvalRate: Record<string, any>;
+  };
 }
 
 export interface ChartFilter {

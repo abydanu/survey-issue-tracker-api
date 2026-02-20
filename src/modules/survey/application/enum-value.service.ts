@@ -401,6 +401,27 @@ export class EnumValueService {
       }
       logger.info(`Found ${statusInstalasiValidation.length} StatusInstalasi values from data validation`);
 
+      // Fallback: if StatusInstalasi validation is empty, read from actual data
+      if (statusInstalasiValidation.length === 0) {
+        logger.info('StatusInstalasi validation empty, falling back to reading from sheet data...');
+        const summaryRows = await this.googleSheets.readRawSummaryRows();
+        
+        for (const row of summaryRows) {
+          if (!Array.isArray(row)) continue;
+          const rawValue = row[18]; // Column S (index 18)
+          if (!rawValue) continue;
+
+          const normalized = this.normalizeStatusInstalasi(rawValue);
+          if (!normalized) continue;
+
+          const displayName = String(rawValue).trim();
+          if (!result.get('StatusInstalasi')!.has(normalized)) {
+            result.get('StatusInstalasi')!.set(normalized, displayName);
+          }
+        }
+        logger.info(`Found ${result.get('StatusInstalasi')!.size} StatusInstalasi values from sheet data`);
+      }
+
       
       for (const value of jenisKendalaValidation) {
         const normalized = await this.normalizeEnumValue(value);
@@ -485,8 +506,8 @@ export class EnumValueService {
       SURVEY: "SURVEY",
       INSTALASI: "INSTALASI",
       "DONE INSTALASI": "DONE_INSTALASI",
-      GOLIVE: "GO_LIVE",
-      "GO LIVE": "GO_LIVE",
+      GOLIVE: "GOLIVE",
+      "GO LIVE": "GOLIVE",
       CANCEL: "CANCEL",
       PENDING: "PENDING",
       KENDALA: "KENDALA",
@@ -626,7 +647,10 @@ export class EnumValueService {
               newDisplayName: displayName,
             });
 
-            logger.info(`Updated displayName for ${enumType}.${value}: "${existing.displayName}" -> "${displayName}"`);
+            // Only log in development, and only once per unique enum value
+            if (process.env.NODE_ENV !== 'production' && updated.length <= 50) {
+              logger.info(`Updated displayName for ${enumType}.${value}: "${existing.displayName}" -> "${displayName}"`);
+            }
           }
         }
       }
