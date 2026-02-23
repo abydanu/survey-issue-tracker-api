@@ -8,6 +8,7 @@ import type {
   NewBgesB2BOloRow,
 } from "../domain/sync.entity.js";
 import fs from "fs";
+import { toBigInt } from "@/shared/utils/bigint.js";
 
 function loadGoogleCredentials(): Record<string, unknown> {
 
@@ -448,8 +449,8 @@ export class GoogleSheetsService {
           continue;
         }
 
-        const idKendala = row[4] ? String(row[4]).trim() : '';
-        const namaPelanggan = row[8] ? String(row[8]).trim() : 'N/A';
+        const idKendala = row[4] ? String(row[4]).trim() : ''; // Column E (index 4) = ID KENDALA
+        const namaPelanggan = row[8] ? String(row[8]).trim() : 'N/A'; // Column I (index 8) = NAMA PELANGGAN
 
         if (!idKendala || idKendala === '') {
           skipReasons['no_idKendala'] = (skipReasons['no_idKendala'] || 0) + 1;
@@ -1237,9 +1238,11 @@ export class GoogleSheetsService {
       latitude: row[7] ? String(row[7]).trim() : null,
       longitude: row[8] ? String(row[8]).trim() : null,
       ihldLopId,
-      planTematik: row[13] ? String(row[13]).trim() : null,
+      planTematik: await this.normalizeEnumValue(row[13], 'PlanTematik') as any,
+      planTematikRaw: row[13] ? String(row[13]).trim() : undefined,
       rabHld,
-      statusUsulan: row[17] ? String(row[17]).trim() : null,
+      statusUsulan: await this.normalizeEnumValue(row[17], 'StatusUsulan') as any,
+      statusUsulanRaw: row[17] ? String(row[17]).trim() : undefined,
       statusInstalasi: await this.normalizeStatusInstalasi(row[18]) as any,
       statusInstalasiRaw: row[18] ? String(row[18]).trim() : undefined,
     };
@@ -1299,47 +1302,16 @@ export class GoogleSheetsService {
       }
     }
 
-    let umur: number | null = null;
-    if (row[1]) {
-      const umurStr = String(row[1]).replace(/,/g, "").trim();
-      const parsed = parseInt(umurStr, 10);
-      if (!isNaN(parsed)) {
-        umur = parsed;
-      }
-    }
-
 
     if (!tglInputUsulan && row[4] && String(row[4]).trim()) {
       console.warn(`[WARNING] Row ${rowNumber} - idKendala: ${String(row[4]).trim()} has NULL tanggal input. Raw value: "${row[3]}"`);
     }
 
-    let rabHld: bigint | null = null;
-    if (row[13]) {
-      const rabStr = String(row[13]).replace(/,/g, "").trim();
-      if (rabStr) {
-        try {
-          rabHld = BigInt(rabStr);
-        } catch (e) { }
-      }
-    }
-
-    let ihldValue: bigint | null = null;
-    if (row[14]) {
-      const ihldStr = String(row[14]).replace(/,/g, "").trim();
-      if (ihldStr) {
-        try {
-          ihldValue = BigInt(ihldStr);
-        } catch (e) { }
-      }
-    }
-
-    let occPercentage: number | null = null;
-
     return {
       idKendala: normalizeSheetId(row[4]),
-      umur,
+      umur: row[1] ? Number(row[1]) : null, 
       bln: row[2] ? String(row[2]).trim() : null,
-      tglInputUsulan,
+      tglInputUsulan: tglInputUsulan,
       jenisOrder: row[5] ? String(row[5]).trim() : null,
 
       datel: String(row[6] || "").trim(),
@@ -1353,8 +1325,8 @@ export class GoogleSheetsService {
       jenisKendalaRaw: row[11] ? String(row[11]).trim() : undefined,
       planTematikRaw: row[12] ? String(row[12]).trim() : undefined,
 
-      rabHld,
-      ihldValue,
+      rabHld: toBigInt(row[13]),
+      ihldValue: toBigInt(row[14]),
 
       statusUsulan: await this.normalizeEnumValue(row[15], 'StatusUsulan') as any,
       statusIhld: row[16] ? String(row[16]).trim() : null,
@@ -1372,7 +1344,7 @@ export class GoogleSheetsService {
       avai: null,
       used: null,
       isTotal: null,
-      occPercentage,
+      occPercentage: null,
     };
   }
 

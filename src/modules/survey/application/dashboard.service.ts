@@ -11,7 +11,6 @@ import type {
 import logger from "../../../infrastructure/logging/logger.js";
 import prisma from "../../../infrastructure/database/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
-import { tr } from "@faker-js/faker";
 
 export class DashboardService {
   constructor(private syncRepo: ISyncRepository) {}

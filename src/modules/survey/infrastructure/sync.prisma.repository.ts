@@ -369,7 +369,9 @@ export class SyncPrismaRepository implements ISyncRepository {
           statusJt: true,
           statusInstalasi: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { 
+          no: 'desc'
+        },
         skip: (page - 1) * limit,
         take: limit,
       }),

@@ -60,7 +60,9 @@ export async function incrementalSyncFromSheets(
     
     for (const summary of summaryData) {
       if (summary.statusJt) enumPromises.push(resolveEnumId('StatusJt', summary.statusJt, summary.statusJtRaw ?? undefined));
+      if (summary.statusUsulan) enumPromises.push(resolveEnumId('StatusUsulan', summary.statusUsulan, summary.statusUsulanRaw ?? undefined));
       if (summary.statusInstalasi) enumPromises.push(resolveEnumId('StatusInstalasi', summary.statusInstalasi, summary.statusInstalasiRaw ?? undefined));
+      if (summary.planTematik) enumPromises.push(resolveEnumId('PlanTematik', summary.planTematik, summary.planTematikRaw ?? undefined));
     }
     
     await Promise.all(enumPromises);
@@ -89,10 +91,8 @@ export async function incrementalSyncFromSheets(
     
     
     const newScToIdKendala = new Map<string, string>();
-    const customerNameToIdKendala = new Map<string, string>();
     for (const m of existingDetails) {
       if (m.newSc) newScToIdKendala.set(String(m.newSc).trim(), m.idKendala);
-      if (m.namaPelanggan) customerNameToIdKendala.set(String(m.namaPelanggan).trim().toLowerCase(), m.idKendala);
     }
 
     
@@ -272,17 +272,6 @@ export async function incrementalSyncFromSheets(
                     
                     resolvedNcx = newScToIdKendala.get(nomorNcx)!;
                     existingMaster = { idKendala: resolvedNcx };
-                  } else if (summary.namaPelanggan) {
-                    
-                    const sheetNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim() ?? '';
-                    const isNumericNcx = /^\d+$/.test(sheetNomorNcx);
-                    if (!isNumericNcx) {
-                      const customerKey = summary.namaPelanggan.trim().toLowerCase();
-                      if (customerNameToIdKendala.has(customerKey)) {
-                        resolvedNcx = customerNameToIdKendala.get(customerKey)!;
-                        existingMaster = { idKendala: resolvedNcx };
-                      }
-                    }
                   }
                   
                   nomorNcx = resolvedNcx;
@@ -354,6 +343,9 @@ export async function incrementalSyncFromSheets(
                       
                       const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
                       if (statusUsulanId) masterEnumFields.statusUsulan = { connect: { id: statusUsulanId } };
+                      
+                      const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
+                      if (statusInstalasiId) masterEnumFields.statusInstalasi = { connect: { id: statusInstalasiId } };
 
                       await tx.newBgesB2BOlo.create({
                         data: {
@@ -368,6 +360,37 @@ export async function incrementalSyncFromSheets(
                           ...masterEnumFields,
                           rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
                         }
+                      });
+                    }
+                  }
+                  
+                  // Update master record with data from summary (if master exists and summary has data)
+                  if (existingMaster) {
+                    const masterUpdateFields: any = {
+                      syncStatus: 'SYNCED',
+                      lastSyncAt: new Date(),
+                    };
+                    
+                    // Update enum fields if summary has them
+                    const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
+                    if (statusUsulanId) masterUpdateFields.statusUsulan = { connect: { id: statusUsulanId } };
+                    
+                    const statusInstalasiId = enumCache.get(`StatusInstalasi:${summary.statusInstalasi}`);
+                    if (statusInstalasiId) masterUpdateFields.statusInstalasi = { connect: { id: statusInstalasiId } };
+                    
+                    const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
+                    if (planTematikId) masterUpdateFields.planTematik = { connect: { id: planTematikId } };
+                    
+                    // Update rabHld if summary has it
+                    if (summary.rabHld !== null && summary.rabHld !== undefined) {
+                      masterUpdateFields.rabHld = new Prisma.Decimal(summary.rabHld.toString());
+                    }
+                    
+                    // Only update if we have fields to update
+                    if (Object.keys(masterUpdateFields).length > 2) { // more than just syncStatus and lastSyncAt
+                      await tx.newBgesB2BOlo.update({
+                        where: { idKendala: nomorNcx },
+                        data: masterUpdateFields
                       });
                     }
                   }
@@ -397,7 +420,7 @@ export async function incrementalSyncFromSheets(
                       namaPelanggan: summary.namaPelanggan !== undefined ? summary.namaPelanggan : undefined,
                       latitude: summary.latitude !== undefined ? summary.latitude : undefined,
                       longitude: summary.longitude !== undefined ? summary.longitude : undefined,
-                      ihldLopId: summary.ihldLopId !== undefined ? summary.ihldLopId : undefined,
+                      ihldLopId: (summary.ihldLopId !== undefined && summary.ihldLopId !== null && summary.ihldLopId <= 2147483647) ? summary.ihldLopId : undefined,
                       planTematik: summary.planTematik !== undefined ? summary.planTematik : undefined,
                       rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : undefined,
                       statusUsulan: summary.statusUsulan !== undefined ? summary.statusUsulan : undefined,
@@ -424,7 +447,7 @@ export async function incrementalSyncFromSheets(
                       namaPelanggan: summary.namaPelanggan ?? null,
                       latitude: summary.latitude ?? null,
                       longitude: summary.longitude ?? null,
-                      ihldLopId: summary.ihldLopId ?? null,
+                      ihldLopId: (summary.ihldLopId !== null && summary.ihldLopId <= 2147483647) ? summary.ihldLopId : null,
                       planTematik: summary.planTematik ?? null,
                       rabHld: summary.rabHld !== null && summary.rabHld !== undefined ? new Prisma.Decimal(summary.rabHld.toString()) : null,
                       statusUsulan: summary.statusUsulan ?? null,

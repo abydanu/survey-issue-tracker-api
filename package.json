@@ -3,9 +3,6 @@
   "module": "src/main.ts",
   "type": "module",
   "private": true,
-  "imports": {
-    "@/*": "./src/*"
-  },
   "scripts": {
     "dev": "NODE_ENV=development bun --no-env-file --env-file .env.local --hot src/main.ts",
     "prod": "NODE_ENV=production bun --no-env-file --env-file .env.production src/main.ts",

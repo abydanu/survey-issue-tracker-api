@@ -25,3 +25,12 @@ export function serializeBigInt<T>(obj: T): any {
 
   return obj;
 }
+
+export const toBigInt = (val: unknown): bigint | null => {
+  if (val === null || val === undefined || val === '') return null;
+  const str = String(val).trim();
+  if (!str) return null;
+  const cleaned = str.replace(/\.0+$/, '').replace(/,/g, '');
+  if (!/^-?\d+$/.test(cleaned)) return null; 
+  return BigInt(cleaned);
+};

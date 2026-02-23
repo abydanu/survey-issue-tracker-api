@@ -62,7 +62,6 @@ export class SyncController {
         }
       }
 
-      // Parse statusUsulan (single or multiple)
       let statusUsulanValues: string[] | undefined;
       if (statusUsulanParam) {
         if (statusUsulanParam.includes(',')) {
@@ -73,7 +72,6 @@ export class SyncController {
         }
       }
 
-      // Parse statusUsulanNot (single or multiple)
       let statusUsulanNotValues: string[] | undefined;
       if (statusUsulanNotParam) {
         if (statusUsulanNotParam.includes(',')) {

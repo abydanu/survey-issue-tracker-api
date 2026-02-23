@@ -69,8 +69,10 @@ export interface NdeUsulanB2BRow {
   longitude?: string | null;
   ihldLopId?: number | null;
   planTematik?: string | null;
+  planTematikRaw?: string | null;
   rabHld?: bigint | null;
   statusUsulan?: string | null;
+  statusUsulanRaw?: string | null;
   statusInstalasi?: string | null;
   statusInstalasiRaw?: string | null;
 }
