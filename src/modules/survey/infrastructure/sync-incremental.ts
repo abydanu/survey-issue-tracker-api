@@ -137,7 +137,7 @@ export async function incrementalSyncFromSheets(
                       tglInputUsulan: detail.tglInputUsulan !== undefined ? detail.tglInputUsulan : undefined,
                       umur: detail.umur !== undefined ? detail.umur : undefined,
                       bln: detail.bln !== undefined ? detail.bln : undefined,
-                      jenisOrder: detail.jenisOrder, // Always update, even if null
+                      jenisOrder: detail.jenisOrder, 
                       datel: detail.datel !== undefined ? detail.datel : undefined,
                       sto: detail.sto !== undefined ? detail.sto : undefined,
                       namaPelanggan: detail.namaPelanggan !== undefined ? detail.namaPelanggan : undefined,
@@ -279,7 +279,7 @@ export async function incrementalSyncFromSheets(
                   
                   sheetSummaryResolvedIds.add(nomorNcx);
                   
-                  // If nomorNcx was resolved to a different value, check if summary already exists
+                  
                   const originalNomorNcx = (summary.nomorNcx || summary.nomorNc)?.trim();
                   if (resolvedNcx !== originalNomorNcx) {
                     const existingSummary = await tx.ndeUsulanB2B.findUnique({
@@ -287,7 +287,7 @@ export async function incrementalSyncFromSheets(
                     });
                     
                     if (existingSummary) {
-                      // Summary already exists with resolved nomorNcx, just update it
+                      
                       stats.updated++;
                       
                       const statusJtId = summary.statusJt ? enumCache.get(`StatusJt:${summary.statusJt}`) : null;
@@ -326,16 +326,16 @@ export async function incrementalSyncFromSheets(
                   }
 
                   if (!existingMaster) {
-                    // Double check if master data exists in database
+                    
                     const masterInDb = await tx.newBgesB2BOlo.findUnique({
                       where: { idKendala: nomorNcx }
                     });
                     
                     if (masterInDb) {
-                      // Master already exists, skip creation
+                      
                       existingMaster = masterInDb;
                     } else {
-                      // Create new master data
+                      
                       const masterEnumFields: any = {};
                       
                       const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
@@ -364,14 +364,14 @@ export async function incrementalSyncFromSheets(
                     }
                   }
                   
-                  // Update master record with data from summary (if master exists and summary has data)
+                  
                   if (existingMaster) {
                     const masterUpdateFields: any = {
                       syncStatus: 'SYNCED',
                       lastSyncAt: new Date(),
                     };
                     
-                    // Update enum fields if summary has them
+                    
                     const statusUsulanId = enumCache.get(`StatusUsulan:${summary.statusUsulan}`);
                     if (statusUsulanId) masterUpdateFields.statusUsulan = { connect: { id: statusUsulanId } };
                     
@@ -381,13 +381,13 @@ export async function incrementalSyncFromSheets(
                     const planTematikId = enumCache.get(`PlanTematik:${summary.planTematik}`);
                     if (planTematikId) masterUpdateFields.planTematik = { connect: { id: planTematikId } };
                     
-                    // Update rabHld if summary has it
+                    
                     if (summary.rabHld !== null && summary.rabHld !== undefined) {
                       masterUpdateFields.rabHld = new Prisma.Decimal(summary.rabHld.toString());
                     }
                     
-                    // Only update if we have fields to update
-                    if (Object.keys(masterUpdateFields).length > 2) { // more than just syncStatus and lastSyncAt
+                    
+                    if (Object.keys(masterUpdateFields).length > 2) { 
                       await tx.newBgesB2BOlo.update({
                         where: { idKendala: nomorNcx },
                         data: masterUpdateFields
@@ -489,7 +489,7 @@ export async function incrementalSyncFromSheets(
       }
     }
 
-    // Fix jenisOrder for masters created from summary by matching with detail via newSc
+    
     logger.info('Fixing jenisOrder for masters created from summary...');
     const mastersWithoutJenisOrder = await prisma.newBgesB2BOlo.findMany({
       where: {
@@ -506,7 +506,7 @@ export async function incrementalSyncFromSheets(
       
       let fixed = 0;
       for (const master of mastersWithoutJenisOrder) {
-        // Find detail where newSc matches this master's idKendala
+        
         const matchingDetail = await prisma.newBgesB2BOlo.findFirst({
           where: {
             newSc: master.idKendala,

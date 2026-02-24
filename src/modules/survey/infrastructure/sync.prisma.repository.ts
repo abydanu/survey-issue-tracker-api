@@ -225,7 +225,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       }
     }
 
-    // Filter by statusUsulan (actually filters statusJt field)
+    
     if (query.statusUsulan) {
       const statusUsulanValues = Array.isArray(query.statusUsulan) ? query.statusUsulan : [query.statusUsulan];
       const validStatusUsulan = statusUsulanValues.map(s => s.trim()).filter(s => s && s.toLowerCase() !== 'all');
@@ -239,7 +239,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       }
     }
 
-    // Filter by statusUsulan NOT IN (actually filters statusJt field)
+    
     if (query.statusUsulanNot) {
       const statusUsulanNotValues = Array.isArray(query.statusUsulanNot) ? query.statusUsulanNot : [query.statusUsulanNot];
       const validStatusUsulanNot = statusUsulanNotValues.map(s => s.trim()).filter(s => s);
@@ -268,7 +268,7 @@ export class SyncPrismaRepository implements ISyncRepository {
       };
     }
 
-    // Filter by hariTerakhir (last N days)
+    
     if (query.hariTerakhir) {
       const daysAgo = new Date();
       daysAgo.setDate(daysAgo.getDate() - query.hariTerakhir);
@@ -279,7 +279,7 @@ export class SyncPrismaRepository implements ISyncRepository {
         tglInputUsulan: { gte: daysAgo },
       };
     }
-    // Filter by dateRange [startDate, endDate]
+    
     else if (query.dateRange) {
       const [startDate, endDate] = query.dateRange;
       
@@ -304,7 +304,7 @@ export class SyncPrismaRepository implements ISyncRepository {
         };
       }
     }
-    // Filter by tahun and bulan
+    
     else if (query.tahun) {
       const year = query.tahun;
       

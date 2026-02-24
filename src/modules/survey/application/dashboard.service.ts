@@ -109,19 +109,24 @@ export class ChartService {
 
     let untung = 0;
     let rugi = 0;
+    let skipped = 0;
 
     for (const s of surveys) {
-      const rabSurvey = s.rabSurvey ? Number(s.rabSurvey) : null;
-      const rabHld = s.masterData?.rabHld ? Number(s.masterData.rabHld) : null;
-      const nilaiKontrak = s.nilaiKontrak ? Number(s.nilaiKontrak) : null;
+      const rabSurvey = s.rabSurvey ? Number(s.rabSurvey.toString()) : 0;
+      const rabHld = s.masterData?.rabHld ? Number(s.masterData.rabHld.toString()) : 0;
+      const nilaiKontrak = s.nilaiKontrak ? Number(s.nilaiKontrak.toString()) : 0;
 
-      const rab = rabSurvey ?? rabHld;
-      // Skip if rab or nilaiKontrak is null or 0 (no valid data)
-      if (!rab || !nilaiKontrak) continue;
+      const rab = rabSurvey > 0 ? rabSurvey : rabHld;
+      if (rab <= 0 || nilaiKontrak <= 0) {
+        skipped++;
+        continue;
+      }
 
       if (rab < nilaiKontrak) untung++;
       else if (rab > nilaiKontrak) rugi++;
     }
+
+    logger.info(`Profit/Loss calculation: total=${surveys.length}, untung=${untung}, rugi=${rugi}, skipped=${skipped}`);
 
     return { untung, rugi };
   }
@@ -149,13 +154,12 @@ export class ChartService {
       const period = this.extractPeriod(s, filter?.hariTerakhir);
       if (!period) continue;
 
-      const rabSurvey = s.rabSurvey ? Number(s.rabSurvey) : null;
-      const rabHld = s.masterData?.rabHld ? Number(s.masterData.rabHld) : null;
-      const nilaiKontrak = s.nilaiKontrak ? Number(s.nilaiKontrak) : null;
+      const rabSurvey = s.rabSurvey ? Number(s.rabSurvey.toString()) : 0;
+      const rabHld = s.masterData?.rabHld ? Number(s.masterData.rabHld.toString()) : 0;
+      const nilaiKontrak = s.nilaiKontrak ? Number(s.nilaiKontrak.toString()) : 0;
 
-      const rab = rabSurvey ?? rabHld;
-      // Skip if rab or nilaiKontrak is null or 0 (no valid data)
-      if (!rab || !nilaiKontrak) continue;
+      const rab = rabSurvey > 0 ? rabSurvey : rabHld;
+      if (rab <= 0 || nilaiKontrak <= 0) continue;
 
       if (!monthData.has(period)) {
         monthData.set(period, { untung: 0, rugi: 0 });

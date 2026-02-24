@@ -21,7 +21,6 @@ async function main() {
         },
     })
 
-    // Migrate GO_LIVE to GOLIVE
     console.log("Migrating GO_LIVE to GOLIVE...");
     const oldGoLive = await prisma.enumValue.findUnique({
         where: {

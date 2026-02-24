@@ -5,7 +5,7 @@ export async function fixNullDatesFromDetailSheet(
   console.log('Fixing null dates by matching with detail data...');
   console.log(`[DEBUG] Total detail records in sheet: ${detailData.length}`);
   
-  // Log sample detail data to see structure
+  
   if (detailData.length > 0) {
     console.log('[DEBUG] Sample detail record:', JSON.stringify({
       idKendala: detailData[0].idKendala,
@@ -28,13 +28,13 @@ export async function fixNullDatesFromDetailSheet(
   
   console.log(`Found ${nullDateRecords.length} records with null tanggal`);
   
-  // Log first few records to debug
+  
   if (nullDateRecords.length > 0) {
     console.log('[DEBUG] First 3 null date records:');
     nullDateRecords.slice(0, 3).forEach((r: { idKendala: string; newSc: string; namaPelanggan: any; }) => {
       console.log(`  - idKendala: ${r.idKendala}, newSc: ${r.newSc}, name: ${r.namaPelanggan}`);
       
-      // Try to find in detail
+      
       const byId = detailData.find(d => d.idKendala && d.idKendala.trim() === r.idKendala.trim());
       const byNewSc = r.newSc ? detailData.find(d => d.newSc && d.newSc.trim() === r.newSc.trim()) : null;
       
@@ -51,7 +51,7 @@ export async function fixNullDatesFromDetailSheet(
     let dateToUse = null;
     let source = '';
     
-    // Priority 1: Match by newSc (nomor starclick) from detail sheet
+    
     if (record.newSc) {
       matchingDetail = detailData.find(d => 
         d.newSc && 
@@ -66,7 +66,7 @@ export async function fixNullDatesFromDetailSheet(
       }
     }
     
-    // Priority 2: Match by idKendala from detail sheet
+    
     if (!dateToUse && record.idKendala) {
       matchingDetail = detailData.find(d => 
         d.idKendala && 
@@ -81,7 +81,7 @@ export async function fixNullDatesFromDetailSheet(
       }
     }
     
-    // Priority 3: Match DB idKendala with sheet newSc (for mismatched data)
+    
     if (!dateToUse && record.idKendala) {
       matchingDetail = detailData.find(d => 
         d.newSc && 
