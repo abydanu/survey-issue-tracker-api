@@ -115,7 +115,7 @@ export class GoogleSheetsService {
     const sheets = spreadsheet.data.sheets || [];
     const titles = sheets.map((s: any) => s.properties?.title).filter(Boolean);
 
-    
+
     const summarySheet = sheets.find(
       (s: any) => s.properties?.title === this.summarySheetName
     );
@@ -171,7 +171,7 @@ export class GoogleSheetsService {
       }
 
       const findHeaderRowIndex = (allRows: any[][]): number => {
-        
+
         for (let i = 0; i < allRows.length; i++) {
           const row = allRows[i];
           if (!Array.isArray(row)) continue;
@@ -204,20 +204,20 @@ export class GoogleSheetsService {
         ) {
           const nomorNcxCell = String(row[3] ?? "").trim();
           const noCell = String(row[0] ?? "").trim();
-          
-         
+
+
           if (!noCell || !noCell.replace(/[^0-9]/g, "")) {
             skippedEmptyNo++;
             continue;
           }
-          
+
           if (nomorNcxCell !== "") {
-            
+
             const rowNumber =
               headerIdx >= 0 ? headerIdx + 1 + (index + 1) : 2 + (index + 1);
             const mapped = await this.mapRowToSummary(row, rowNumber);
-            
-           
+
+
             if (mapped.no && mapped.no.trim()) {
               results.push(mapped);
             } else {
@@ -244,7 +244,7 @@ export class GoogleSheetsService {
         },
         "Read summary data completed"
       );
-      
+
       return results;
     } catch (error: any) {
       logger.error({
@@ -261,13 +261,13 @@ export class GoogleSheetsService {
     await this.ensureSheetConfigLoaded();
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
-      range: `${this.detailSheetName}!A:U`,
+      range: `${this.detailSheetName}!A:AC`,
     });
 
     const rows = response.data.values;
     if (!rows || rows.length < 3) return [];
     const findHeaderRowIndex = (allRows: any[][]): number => {
-      
+
       for (let i = 0; i < allRows.length; i++) {
         const row = allRows[i];
         if (!Array.isArray(row)) continue;
@@ -313,7 +313,7 @@ export class GoogleSheetsService {
   async readDataValidationValues(sheetName: string, column: string): Promise<string[]> {
     try {
       await this.ensureSheetConfigLoaded();
-      
+
       const response = await this.sheets.spreadsheets.get({
         spreadsheetId: this.spreadsheetId,
         ranges: [`${sheetName}!${column}:${column}`],
@@ -327,13 +327,13 @@ export class GoogleSheetsService {
         const data = sheet.data || [];
         for (const gridData of data) {
           const rowData = gridData.rowData || [];
-          
+
           for (const row of rowData) {
             const cells = row.values || [];
             if (cells.length > 0 && cells[0].dataValidation) {
               const validation = cells[0].dataValidation;
-              
-              
+
+
               if (validation.condition?.type === 'ONE_OF_LIST') {
                 const listValues = validation.condition.values || [];
                 for (const v of listValues) {
@@ -341,15 +341,15 @@ export class GoogleSheetsService {
                   if (val) values.add(String(val));
                 }
               }
-              
-              
+
+
               if (validation.condition?.type === 'ONE_OF_RANGE') {
                 const rangeValues = validation.condition.values || [];
                 for (const v of rangeValues) {
                   if (v.userEnteredValue) {
-                    
+
                     const formula = String(v.userEnteredValue);
-                    
+
                     const rangeMatch = formula.match(/=(.+)!(.+)/);
                     if (rangeMatch) {
                       const [, refSheet, refRange] = rangeMatch;
@@ -406,7 +406,7 @@ export class GoogleSheetsService {
       await this.ensureSheetConfigLoaded();
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.detailSheetName}!A:U`,
+        range: `${this.detailSheetName}!A:AC`,
       });
 
       const rows = response.data.values;
@@ -483,10 +483,10 @@ export class GoogleSheetsService {
     const raw = String(input ?? "").trim();
     if (!raw) return null;
 
-    
+
     await this.loadEnumMappingFromDatabase();
 
-    
+
     if (enumType && this.reverseEnumMappingCache.has(enumType)) {
       const typeMapping = this.reverseEnumMappingCache.get(enumType)!;
       if (typeMapping.has(raw)) {
@@ -495,8 +495,8 @@ export class GoogleSheetsService {
       }
     }
 
-    
-    
+
+
     return raw
       .toUpperCase()
       .replace(/^\d+\s*/g, "")
@@ -650,15 +650,15 @@ export class GoogleSheetsService {
 
   private normalizeNo(input: unknown, fallbackRowNumber: number): string {
     const raw = String(input ?? "").trim();
-    
-   
+
+
     if (!raw) return "";
 
     const digits = raw.replace(/[^0-9]/g, "");
-    
-   
+
+
     if (!digits) return "";
-    
+
     return digits.padStart(4, "0");
   }
 
@@ -671,8 +671,8 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      
-      
+
+
       const dataRows = rows.length < 2 ? [] : rows.slice(1);
 
       const normalizedSearchNo =
@@ -690,7 +690,7 @@ export class GoogleSheetsService {
         );
       });
 
-      return idx >= 0 ? idx + 2 : null; 
+      return idx >= 0 ? idx + 2 : null;
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -709,14 +709,14 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 2 ? [] : rows.slice(1); 
+      const dataRows = rows.length < 2 ? [] : rows.slice(1);
 
       const idx = dataRows.findIndex((row: any[]) => {
         const cellValue = String(row[0] ?? "").trim();
         return cellValue === String(nomorNcx).trim();
       });
 
-      return idx >= 0 ? idx + 2 : null; 
+      return idx >= 0 ? idx + 2 : null;
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -735,7 +735,7 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      const dataRows = rows.length < 2 ? [] : rows.slice(1); 
+      const dataRows = rows.length < 2 ? [] : rows.slice(1);
 
       const searchName = String(namaPelanggan).trim().toLowerCase();
       const idx = dataRows.findIndex((row: any[]) => {
@@ -743,7 +743,7 @@ export class GoogleSheetsService {
         return cellValue === searchName;
       });
 
-      return idx >= 0 ? idx + 2 : null; 
+      return idx >= 0 ? idx + 2 : null;
     } catch (error: any) {
       logger.error({
         message: error.message,
@@ -816,7 +816,7 @@ export class GoogleSheetsService {
           range: `${this.summarySheetName}!A:D`,
         });
         const rows = response.data.values || [];
-        const dataRows = rows.length < 2 ? [] : rows.slice(1); 
+        const dataRows = rows.length < 2 ? [] : rows.slice(1);
         const availableNos = dataRows
           .map((row: any[]) => String(row[0] ?? "").trim())
           .filter(Boolean);
@@ -944,7 +944,7 @@ export class GoogleSheetsService {
 
       const rowDataToUpdate = fullRow.slice(1);
 
-      const updateRange = `'${this.detailSheetName}'!B${rowIndex}:U${rowIndex}`;
+      const updateRange = `'${this.detailSheetName}'!B${rowIndex}:AC${rowIndex}`;
       logger.info(`[DEBUG] Updating range: ${updateRange}`);
 
 
@@ -1016,7 +1016,7 @@ export class GoogleSheetsService {
       const row = await this.mapDetailToRow(data);
       await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.detailSheetName}!A:U`,
+        range: `${this.detailSheetName}!A:AC`,
         valueInputOption: "USER_ENTERED",
         insertDataOption: "INSERT_ROWS",
         requestBody: {
@@ -1152,26 +1152,30 @@ export class GoogleSheetsService {
   }
 
   private async mapRowToSummary(row: any[], rowNumber: number): Promise<NdeUsulanB2BRow> {
-    let c2r: number | null = null;
+    let c2r: number = 0;
     if (row[2]) {
-      const c2rStr = String(row[2]).replace(/%/g, "").replace(/,/g, "");
+      const c2rStr = String(row[2])
+        .replace(/%/g, "")
+        .replace(/,/g, "");
       const parsed = parseFloat(c2rStr);
       if (!isNaN(parsed)) {
         c2r = parsed;
       }
     }
 
-    let nilaiKontrak: bigint | null = null;
+    let nilaiKontrak: bigint = BigInt(0);
     if (row[11]) {
       const nilaiStr = String(row[11]).replace(/,/g, "").trim();
       if (nilaiStr) {
         try {
           nilaiKontrak = BigInt(nilaiStr);
-        } catch (e) { }
+        } catch (e) { 
+          nilaiKontrak = BigInt(0);
+        }
       }
     }
 
-    let ihldLopId: number | null = null;
+    let ihldLopId: number = 0;
     if (row[12]) {
       const ihldStr = String(row[12]).replace(/,/g, "").trim();
       const parsed = parseInt(ihldStr, 10);
@@ -1180,27 +1184,31 @@ export class GoogleSheetsService {
       }
     }
 
-    let rabHld: bigint | null = null;
+    let rabHld: bigint = BigInt(0);
     if (row[14]) {
       const rabStr = String(row[14]).replace(/,/g, "").trim();
       if (rabStr) {
         try {
           rabHld = BigInt(rabStr);
-        } catch (e) { }
+        } catch (e) { 
+          rabHld = BigInt(0);
+        }
       }
     }
 
-    let rabSurvey: bigint | null = null;
+    let rabSurvey: bigint = BigInt(0);
     if (row[15]) {
       const rabStr = String(row[15]).replace(/,/g, "").trim();
       if (rabStr) {
         try {
           rabSurvey = BigInt(rabStr);
-        } catch (e) { }
+        } catch (e) { 
+          rabSurvey = BigInt(0);
+        }
       }
     }
 
-    let jarakOdp: number | null = null;
+    let jarakOdp: number = 0;
     if (row[21]) {
       const jarakStr = String(row[21]).replace(/,/g, "").trim();
       const parsed = parseFloat(jarakStr);
@@ -1252,10 +1260,10 @@ export class GoogleSheetsService {
     const normalizeSheetId = (value: any): string => {
       const raw = String(value || "")
         .trim()
-        .replace(/^'/, ""); 
+        .replace(/^'/, "");
 
-      
-      
+
+
       if (/^\d+\.0$/.test(raw)) return raw.slice(0, -2);
       return raw;
     };
@@ -1309,7 +1317,7 @@ export class GoogleSheetsService {
 
     return {
       idKendala: normalizeSheetId(row[4]),
-      umur: row[1] ? Number(row[1]) : null, 
+      umur: row[1] ? Number(row[1]) : null,
       bln: row[2] ? String(row[2]).trim() : null,
       tglInputUsulan: tglInputUsulan,
       jenisOrder: row[5] ? String(row[5]).trim() : null,
@@ -1338,21 +1346,53 @@ export class GoogleSheetsService {
       keteranganRaw: row[19] ? String(row[19]).trim() : undefined,
       newSc: row[20] ? normalizeSheetId(row[20]) : null,
 
-      namaOdp: null,
-      tglGolive: null,
+      namaOdp: row[21] ? String(row[21]).trim() : null,
+      tglGolive: row[22] ? this.parseDate(String(row[22]).trim()) : null,
 
-      avai: null,
-      used: null,
-      isTotal: null,
-      occPercentage: null,
+      avai: row[25] ? (isNaN(Number(row[25])) ? 0 : Number(row[25])) : 0,
+      used: row[26] ? (isNaN(Number(row[26])) ? 0 : Number(row[26])) : 0,
+      isTotal: row[27] ? (isNaN(Number(row[27])) ? 0 : Number(row[27])) : 0,
+      occPercentage: row[28] ? (isNaN(Number(row[28])) ? 0 : Number(row[28])) : 0,
     };
+  }
+
+  private parseDate(dateStr: string): Date | null {
+    if (!dateStr || dateStr === '-' || dateStr === '') return null;
+    
+    try {
+      if (dateStr.includes("/")) {
+        const parts = dateStr.split("/");
+        if (parts.length === 3) {
+          const month = parts[0] ? parseInt(parts[0], 10) : 1;
+          const day = parts[1] ? parseInt(parts[1], 10) : 1;
+          let year = parts[2] ? parseInt(parts[2], 10) : new Date().getFullYear();
+
+          if (year < 100) {
+            year += year < 50 ? 2000 : 1900;
+          }
+
+          const isoDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+          const date = new Date(isoDateStr);
+
+          if (isNaN(date.getTime()) || year < 2000 || year > 2100) {
+            return null;
+          }
+          return date;
+        }
+      }
+      
+      const date = new Date(dateStr);
+      return isNaN(date.getTime()) ? null : date;
+    } catch (error) {
+      return null;
+    }
   }
 
   private async mapSummaryToRow(data: Partial<NdeUsulanB2BRow>): Promise<any[]> {
 
     const c2rValue = data.c2r !== null && data.c2r !== undefined
       ? `${(Number(data.c2r) * 100).toFixed(0)}%`
-      : "0";
+      : 0;
 
     return [
       data.no || "",
@@ -1415,6 +1455,14 @@ export class GoogleSheetsService {
       await this.denormalizeEnumValue(data.statusInstalasi, 'StatusInstalasi'),
       await this.denormalizeEnumValue(data.keterangan, 'Keterangan'),
       data.newSc || "",
+      data.namaOdp || "",
+      formatDate(data.tglGolive),
+      "", // X - skip
+      "", // Y - skip
+      data.avai?.toString() || "0",
+      data.used?.toString() || "0",
+      data.isTotal?.toString() || "0",
+      data.occPercentage?.toString() || "0",
     ];
   }
 }

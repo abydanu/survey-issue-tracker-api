@@ -26,11 +26,11 @@ export function serializeBigInt<T>(obj: T): any {
   return obj;
 }
 
-export const toBigInt = (val: unknown): bigint | null => {
-  if (val === null || val === undefined || val === '') return null;
+export const toBigInt = (val: unknown): bigint => {
+  if (val === null || val === undefined || val === '') return BigInt(0);
   const str = String(val).trim();
-  if (!str) return null;
+  if (!str) return BigInt(0);
   const cleaned = str.replace(/\.0+$/, '').replace(/,/g, '');
-  if (!/^-?\d+$/.test(cleaned)) return null; 
+  if (!/^-?\d+$/.test(cleaned)) return BigInt(0); 
   return BigInt(cleaned);
 };
