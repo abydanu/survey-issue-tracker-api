@@ -116,7 +116,8 @@ export class ChartService {
       const nilaiKontrak = s.nilaiKontrak ? Number(s.nilaiKontrak) : null;
 
       const rab = rabSurvey ?? rabHld;
-      if (rab === null || nilaiKontrak === null) continue;
+      // Skip if rab or nilaiKontrak is null or 0 (no valid data)
+      if (!rab || !nilaiKontrak) continue;
 
       if (rab < nilaiKontrak) untung++;
       else if (rab > nilaiKontrak) rugi++;
@@ -153,7 +154,8 @@ export class ChartService {
       const nilaiKontrak = s.nilaiKontrak ? Number(s.nilaiKontrak) : null;
 
       const rab = rabSurvey ?? rabHld;
-      if (rab === null || nilaiKontrak === null) continue;
+      // Skip if rab or nilaiKontrak is null or 0 (no valid data)
+      if (!rab || !nilaiKontrak) continue;
 
       if (!monthData.has(period)) {
         monthData.set(period, { untung: 0, rugi: 0 });
